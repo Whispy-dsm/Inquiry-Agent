@@ -59,12 +59,40 @@
 
 ### Plan
 
-- [ ] Create TypeScript/Vitest project scaffolding from the inquiry-agent plan.
-- [ ] Add RED-first tests for domain risk classification.
-- [ ] Add RED-first tests for Google Sheets row mapping.
-- [ ] Add RED-first tests for AI prompt/draft parsing fallback.
-- [ ] Add RED-first tests for Gmail MIME encoding.
-- [ ] Add RED-first tests for workflow lock and inquiry workflow transitions.
-- [ ] Run targeted and full test commands to capture expected RED failures.
-- [ ] Report exactly whether any production stubs were added.
+- [x] Create TypeScript/Vitest project scaffolding from the inquiry-agent plan.
+- [x] Add RED-first tests for domain risk classification.
+- [x] Add RED-first tests for Google Sheets row mapping.
+- [x] Add RED-first tests for AI prompt/draft parsing fallback.
+- [x] Add RED-first tests for Gmail MIME encoding.
+- [x] Add RED-first tests for workflow lock and inquiry workflow transitions.
+- [x] Run targeted and full test commands to capture expected RED failures.
+- [x] Report exactly whether any production stubs were added.
+
+### Review
+
+- `$team 1` launched successfully, but the worker hit a usage limit after merging its initial RED-first scaffolding.
+- Continued inline with TDD after team shutdown instead of discarding the RED state.
+- Fixed one scaffolding issue in `package.json` by changing `@openrouter/sdk` from a nonexistent `^0.7.0` to `^0.12.20` so installs could run.
+- Added minimal production files only to satisfy the failing tests:
+  - `src/domain/inquiry.ts`
+  - `src/domain/risk.ts`
+  - `src/sheets/sheetColumns.ts`
+  - `src/sheets/googleSheetsClient.ts`
+  - `src/config/env.ts`
+  - `src/ai/openRouterDraftGenerator.ts`
+  - `src/email/mime.ts`
+  - `src/email/gmailClient.ts`
+  - `src/workflow/inquiryLock.ts`
+  - `src/workflow/inquiryWorkflow.ts`
+  - `src/discord/renderInquiryMessage.ts`
+  - `src/discord/interactionHandlers.ts`
+- Added new RED->GREEN test files:
+  - `tests/config/env.test.ts`
+  - `tests/sheets/googleSheetsClient.test.ts`
+  - `tests/discord/renderInquiryMessage.test.ts`
+  - `tests/email/gmailClient.test.ts`
+  - `tests/discord/interactionHandlers.test.ts`
+- Verification:
+  - `npm run test` -> 20 tests passing
+  - `npm run typecheck` -> passing
 
