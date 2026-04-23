@@ -54,3 +54,17 @@
 - [x] Capture agreed requirements for Google Sheets inquiry intake, AI draft generation, Discord approve/edit/reject, and Gmail sending.
 - [x] Write PRD-level implementation plan to `docs/superpowers/plans/2026-04-23-inquiry-agent-discord-approval.md`.
 - [x] Self-review the plan for requirement coverage and deferred-detail red flags.
+
+## Worker 1: First TDD Slice
+
+### Plan
+
+- [ ] Create TypeScript/Vitest project scaffolding from the inquiry-agent plan.
+- [ ] Add RED-first tests for domain risk classification.
+- [ ] Add RED-first tests for Google Sheets row mapping.
+- [ ] Add RED-first tests for AI prompt/draft parsing fallback.
+- [ ] Add RED-first tests for Gmail MIME encoding.
+- [ ] Add RED-first tests for workflow lock and inquiry workflow transitions.
+- [ ] Run targeted and full test commands to capture expected RED failures.
+- [ ] Report exactly whether any production stubs were added.
+
