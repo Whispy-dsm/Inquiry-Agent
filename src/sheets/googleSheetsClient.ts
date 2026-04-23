@@ -3,12 +3,32 @@ import type { OAuth2Client } from 'google-auth-library';
 import type { Inquiry } from '../domain/inquiry.js';
 import { buildManagedColumnUpdates, mapRowToInquiry } from './sheetColumns.js';
 
+/** Google Sheet에 worker가 직접 관리하는 출력 컬럼 목록입니다. */
+const managedColumns = [
+  'inquiry_id',
+  'status',
+  'risk_level',
+  'risk_reasons',
+  'discord_channel_id',
+  'discord_message_id',
+  'draft_subject',
+  'draft_body',
+  'final_subject',
+  'final_body',
+  'handled_by',
+  'handled_at',
+  'gmail_message_id',
+  'error_message',
+] as const;
+
+/** googleapis의 values 응답 중 이 worker가 사용하는 최소 형태입니다. */
 type ValueRange = {
   data?: {
     values?: string[][];
   };
 };
 
+/** 테스트 주입을 쉽게 하기 위해 googleapis Sheets client의 필요한 부분만 좁힌 포트입니다. */
 type SheetsLike = {
   spreadsheets: {
     values: {
@@ -26,6 +46,14 @@ type SheetsLike = {
   };
 };
 
+/**
+ * Google Sheets를 문의 queue와 처리 상태 저장소로 사용하는 어댑터입니다.
+ *
+ * @remarks
+ * 이 class는 Google Form이 만든 row를 읽고, worker가 관리하는 상태 컬럼을 업데이트합니다.
+ *
+ * @public
+ */
 export class GoogleSheetsClient {
   constructor(
     private readonly sheets: SheetsLike,
@@ -33,6 +61,14 @@ export class GoogleSheetsClient {
     private readonly sheetName: string,
   ) {}
 
+  /**
+   * OAuth client로 실제 Google Sheets API 어댑터를 생성합니다.
+   *
+   * @param auth - Sheets 접근 권한이 있는 Google OAuth client
+   * @param spreadsheetId - 문의가 쌓이는 spreadsheet id
+   * @param sheetName - 문의 row가 있는 sheet/tab 이름
+   * @returns Google Sheets 기반 문의 저장소 adapter
+   */
   static fromOAuth(
     auth: OAuth2Client,
     spreadsheetId: string,
@@ -45,6 +81,11 @@ export class GoogleSheetsClient {
     );
   }
 
+  /**
+   * Sheet에서 아직 처리되지 않은 신규 문의만 읽어옵니다.
+   *
+   * @returns `status`가 비어 있거나 `new`인 문의 목록
+   */
   async listNewInquiries(): Promise<Inquiry[]> {
     const { headers, rows } = await this.readRows();
 
@@ -53,6 +94,12 @@ export class GoogleSheetsClient {
       .filter((inquiry) => inquiry.status === 'new');
   }
 
+  /**
+   * 특정 row의 managed column 값을 개별 cell update로 저장합니다.
+   *
+   * @param rowNumber - Google Sheet의 1-based row 번호
+   * @param values - managed column 이름과 저장할 값
+   */
   async updateManagedFields(
     rowNumber: number,
     values: Record<string, string>,
@@ -70,10 +117,39 @@ export class GoogleSheetsClient {
     }
   }
 
+  /**
+   * Google Form 기본 컬럼 뒤에 worker 관리 컬럼이 없으면 한 번에 추가합니다.
+   *
+   * @remarks
+   * 첫 실행 때 사람이 Sheet header를 직접 만들지 않아도 worker 상태 저장 필드를 사용할 수 있게 합니다.
+   */
   async ensureManagedColumns(): Promise<void> {
-    return Promise.resolve();
+    const { headers } = await this.readRows();
+    const missing = managedColumns.filter((column) => !headers.includes(column));
+
+    if (missing.length === 0) {
+      return;
+    }
+
+    const startColumn = headers.length + 1;
+    const endColumn = headers.length + missing.length;
+
+    await this.sheets.spreadsheets.values.update({
+      spreadsheetId: this.spreadsheetId,
+      range: `'${this.sheetName}'!${toA1Column(startColumn)}1:${toA1Column(endColumn)}1`,
+      valueInputOption: 'RAW',
+      requestBody: {
+        values: [missing as unknown as string[]],
+      },
+    });
   }
 
+  /**
+   * Discord action의 inquiry id로 발송에 필요한 review metadata를 다시 조회합니다.
+   *
+   * @param inquiryId - Discord button/modal custom id에 포함된 문의 id
+   * @returns 발송에 필요한 Sheet row metadata. 찾지 못하면 `null`
+   */
   async findInquiryReview(inquiryId: string): Promise<{
     rowNumber: number;
     email: string;
@@ -105,6 +181,7 @@ export class GoogleSheetsClient {
     return null;
   }
 
+  /** 전체 Sheet 값을 읽고 첫 행을 header, 나머지를 data row로 분리합니다. */
   private async readRows(): Promise<{ headers: string[]; rows: string[][] }> {
     const response = await this.sheets.spreadsheets.values.get({
       spreadsheetId: this.spreadsheetId,
@@ -119,6 +196,12 @@ export class GoogleSheetsClient {
   }
 }
 
+/**
+ * 1-based column index를 Google Sheets A1 column 이름으로 변환합니다.
+ *
+ * @param index - 1부터 시작하는 column 번호
+ * @returns A, Z, AA 같은 A1 column 이름
+ */
 export function toA1Column(index: number): string {
   let current = index;
   let result = '';
