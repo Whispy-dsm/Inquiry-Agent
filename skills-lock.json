@@ -11,6 +11,11 @@
       "sourceType": "github",
       "computedHash": "1713616faf98ccfb510d82bb7009dfbef07574c27dd95efc0ec3f5b081078809"
     },
+    "jsdoc-tsdoc": {
+      "source": "claude-dev-suite/claude-dev-suite",
+      "sourceType": "github",
+      "computedHash": "4a9e9dd30e61086465a43830a0c30844afff605d80eb52980e2c7c133dfc7276"
+    },
     "nodejs-backend-typescript": {
       "source": "bobmatnyc/claude-mpm-skills",
       "sourceType": "github",

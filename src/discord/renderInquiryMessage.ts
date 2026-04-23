@@ -1,6 +1,7 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import type { Inquiry, InquiryDraft } from '../domain/inquiry.js';
 
+/** Discord CX 채널에 보낼 문의 검토 카드 payload를 생성합니다. */
 export function renderInquiryMessage(input: {
   inquiry: Inquiry;
   draft: InquiryDraft;

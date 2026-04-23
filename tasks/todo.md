@@ -96,3 +96,39 @@
   - `npm run test` -> 20 tests passing
   - `npm run typecheck` -> passing
 
+## Ralph Runtime Wiring
+
+- [x] Add runtime-facing OpenRouter draft generator class with injectable client seam.
+- [x] Add static context provider and prompt module.
+- [x] Add worker bootstrap and `index.ts` entrypoint.
+- [x] Add Discord bot adapter and interaction prefill improvements.
+- [x] Add managed Google Sheets output-column initialization.
+- [x] Add runbook and evaluation cases.
+- [x] Re-verify `npm run test`, `npm run typecheck`, and `npm run build`.
+
+### Review
+
+- New runtime-facing files:
+  - `src/ai/contextProvider.ts`
+  - `src/ai/prompt.ts`
+  - `src/worker.ts`
+  - `src/index.ts`
+  - `docs/runbook.md`
+  - `docs/evals/inquiry-agent-cases.md`
+- Strengthened existing files:
+  - `src/ai/openRouterDraftGenerator.ts`
+  - `src/discord/discordBot.ts`
+  - `src/discord/interactionHandlers.ts`
+  - `src/sheets/googleSheetsClient.ts`
+- Added RED->GREEN tests for:
+  - `tests/ai/openRouterDraftRuntime.test.ts`
+  - `tests/worker.test.ts`
+  - `tests/discord/interactionHandlers.test.ts` modal prefill path
+  - `tests/sheets/googleSheetsClient.test.ts` managed-column initialization
+- Verification:
+  - `npm run test` -> 25 tests passing
+  - `npm run typecheck` -> passing
+  - `npm run build` -> passing
+- Remaining blocker:
+  - Live end-to-end verification still requires real Google OAuth, Discord bot, and OpenRouter credentials.
+
