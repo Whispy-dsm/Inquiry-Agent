@@ -1,0 +1,13 @@
+.omx/
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+*.log
+*.local
+google-credentials.json
+token.json
+auth.json
+.DS_Store
