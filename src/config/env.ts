@@ -1,5 +1,23 @@
 import { z } from 'zod';
 
+const booleanStringSchema = z.preprocess((value) => {
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  const normalized = value.trim().toLowerCase();
+
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) {
+    return true;
+  }
+
+  if (['0', 'false', 'no', 'off'].includes(normalized)) {
+    return false;
+  }
+
+  return value;
+}, z.boolean());
+
 /** 실행에 필요한 모든 환경변수를 런타임 시작 시 검증하는 schema입니다. */
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -11,12 +29,15 @@ const envSchema = z.object({
   GOOGLE_OAUTH_REFRESH_TOKEN: z.string().min(1),
   DISCORD_BOT_TOKEN: z.string().min(1),
   DISCORD_INQUIRY_CHANNEL_ID: z.string().min(1),
-  OPENROUTER_API_KEY: z.string().min(1),
-  OPENROUTER_MODEL: z.string().min(1).default('openai/gpt-4o-mini'),
+  GEMINI_API_KEY: z.string().min(1),
+  GEMINI_MODEL: z.string().min(1).default('gemini-2.5-flash-lite'),
   GMAIL_FROM_EMAIL: z.string().email(),
   GMAIL_FROM_NAME: z.string().min(1).default('Support Team'),
-  POLL_INTERVAL_MS: z.coerce.number().int().positive().default(30000),
-  DRY_RUN_EMAIL: z.coerce.boolean().default(true),
+  POLL_INTERVAL_MS: z.coerce.number().int().positive().default(600000),
+  ENABLE_FALLBACK_POLLING: booleanStringSchema.default(true),
+  WEBHOOK_PORT: z.coerce.number().int().positive().default(3000),
+  WEBHOOK_SECRET: z.string().min(1),
+  DRY_RUN_EMAIL: booleanStringSchema.default(true),
 });
 
 /** 검증된 환경변수 타입입니다. */

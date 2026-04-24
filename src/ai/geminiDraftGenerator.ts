@@ -1,4 +1,4 @@
-import { OpenRouter } from '@openrouter/sdk';
+import { GoogleGenAI } from '@google/genai';
 import { z } from 'zod';
 import type { Inquiry, InquiryDraft } from '../domain/inquiry.js';
 import { classifyRisk } from '../domain/risk.js';
@@ -13,35 +13,39 @@ const draftSchema = z.object({
   missingInformation: z.array(z.string()).default([]),
 });
 
-/** 테스트와 실제 SDK를 같은 방식으로 다루기 위한 OpenRouter 최소 포트입니다. */
-type OpenRouterLike = {
-  callModel(args: {
-    model: string;
-    instructions: string;
-    input: string;
-  }): {
-    getText(): Promise<string>;
+/** 테스트와 실제 SDK를 같은 방식으로 다루기 위한 Gemini 최소 포트입니다. */
+type GeminiLike = {
+  models: {
+    generateContent(args: {
+      model: string;
+      contents: string;
+      config: {
+        systemInstruction: string;
+      };
+    }): Promise<{
+      text?: string;
+    }>;
   };
 };
 
 /**
- * OpenRouter 모델과 context provider를 사용해 문의 답변 초안을 생성합니다.
+ * Gemini 모델과 context provider를 사용해 문의 답변 초안을 생성합니다.
  *
  * @remarks
  * 모델 출력은 신뢰하지 않고 {@link parseDraftJson}으로 schema 검증을 거칩니다.
  *
  * @public
  */
-export class OpenRouterDraftGenerator {
-  private readonly client: OpenRouterLike;
+export class GeminiDraftGenerator {
+  private readonly client: GeminiLike;
 
   constructor(
     apiKey: string,
     private readonly model: string,
     private readonly contextProvider: ContextProvider,
-    client?: OpenRouterLike,
+    client?: GeminiLike,
   ) {
-    this.client = client ?? (new OpenRouter({ apiKey }) as unknown as OpenRouterLike);
+    this.client = client ?? (new GoogleGenAI({ apiKey }) as unknown as GeminiLike);
   }
 
   /**
@@ -52,13 +56,15 @@ export class OpenRouterDraftGenerator {
    */
   async generateDraft(inquiry: Inquiry): Promise<InquiryDraft> {
     const context = await this.contextProvider.findRelevantContext(inquiry);
-    const result = this.client.callModel({
+    const response = await this.client.models.generateContent({
       model: this.model,
-      instructions: draftSystemPrompt,
-      input: buildDraftPrompt(inquiry, context),
+      contents: buildDraftPrompt(inquiry, context),
+      config: {
+        systemInstruction: draftSystemPrompt,
+      },
     });
-    const text = await result.getText();
-    return parseDraftJson(inquiry, text);
+
+    return parseDraftJson(inquiry, response.text ?? '');
   }
 }
 

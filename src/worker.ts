@@ -1,12 +1,13 @@
 import { google } from 'googleapis';
 import pino from 'pino';
 import { StaticContextProvider } from './ai/contextProvider.js';
-import { OpenRouterDraftGenerator } from './ai/openRouterDraftGenerator.js';
+import { GeminiDraftGenerator } from './ai/geminiDraftGenerator.js';
 import { loadEnv } from './config/env.js';
 import { DiscordReviewBot } from './discord/discordBot.js';
 import { handleEditSubmit, handleReviewButton } from './discord/interactionHandlers.js';
 import { GmailClient } from './email/gmailClient.js';
 import { GoogleSheetsClient } from './sheets/googleSheetsClient.js';
+import { createGoogleFormWebhookServer } from './webhook/googleFormWebhookServer.js';
 import { InquiryLock } from './workflow/inquiryLock.js';
 import { InquiryWorkflow } from './workflow/inquiryWorkflow.js';
 
@@ -32,7 +33,9 @@ type RepliableInteraction = {
 type WorkerAppDeps = {
   bot: { start(): Promise<void>; client: { on(event: string, listener: (interaction: InteractionLike) => Promise<void>): unknown } };
   workflow: { pollOnce(): Promise<void> };
+  webhookServer: { start(): Promise<void> };
   interactionHandler: (interaction: InteractionLike) => Promise<void>;
+  enableFallbackPolling: boolean;
   intervalMs: number;
   logger: LoggerLike;
   setIntervalFn?: typeof setInterval;
@@ -51,12 +54,17 @@ export function createWorkerApp(deps: WorkerAppDeps) {
     async start(): Promise<void> {
       deps.bot.client.on('interactionCreate', deps.interactionHandler);
       await deps.bot.start();
-      await deps.workflow.pollOnce();
-      setIntervalFn(() => {
-        deps.workflow.pollOnce().catch((error) => {
-          deps.logger.error({ error }, 'Polling failed');
-        });
-      }, deps.intervalMs);
+      await deps.webhookServer.start();
+
+      if (deps.enableFallbackPolling) {
+        await deps.workflow.pollOnce();
+        setIntervalFn(() => {
+          deps.workflow.pollOnce().catch((error) => {
+            deps.logger.error({ error }, 'Polling failed');
+          });
+        }, deps.intervalMs);
+      }
+
       deps.logger.info('Inquiry agent worker started');
     },
   };
@@ -93,14 +101,22 @@ export async function startWorker(
   const sheetsClient = GoogleSheetsClient.fromOAuth(oauth, env.GOOGLE_SHEET_ID, env.GOOGLE_SHEET_NAME);
   const gmailClient = GmailClient.fromOAuth(oauth, env.DRY_RUN_EMAIL);
   const contextProvider = new StaticContextProvider([]);
-  const draftGenerator = new OpenRouterDraftGenerator(
-    env.OPENROUTER_API_KEY,
-    env.OPENROUTER_MODEL,
+  const draftGenerator = new GeminiDraftGenerator(
+    env.GEMINI_API_KEY,
+    env.GEMINI_MODEL,
     contextProvider,
   );
   const discordBot = new DiscordReviewBot(env.DISCORD_BOT_TOKEN, env.DISCORD_INQUIRY_CHANNEL_ID);
   const inquiryLock = new InquiryLock();
   const workflow = new InquiryWorkflow(sheetsClient, draftGenerator, discordBot);
+  const webhookServer = createGoogleFormWebhookServer({
+    expectedSecret: env.WEBHOOK_SECRET,
+    expectedSheetName: env.GOOGLE_SHEET_NAME,
+    expectedSpreadsheetId: env.GOOGLE_SHEET_ID,
+    logger,
+    port: env.WEBHOOK_PORT,
+    workflow,
+  });
 
   const interactionHandler = async (interaction: InteractionLike): Promise<void> => {
     try {
@@ -198,7 +214,9 @@ export async function startWorker(
   const app = createWorkerApp({
     bot: discordBot as never,
     workflow,
+    webhookServer,
     interactionHandler,
+    enableFallbackPolling: env.ENABLE_FALLBACK_POLLING,
     intervalMs: env.POLL_INTERVAL_MS,
     logger,
   });

@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "inquiry-agent",
   "version": "0.1.0",
   "private": true,
@@ -13,7 +13,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@openrouter/sdk": "^0.12.20",
+    "@google/genai": "^1.50.1",
     "discord.js": "^14.19.3",
     "dotenv": "^16.5.0",
     "googleapis": "^148.0.0",

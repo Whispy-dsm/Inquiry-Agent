@@ -1,8 +1,9 @@
-﻿import { describe, expect, it } from 'vitest';
-import { buildDraftPrompt, parseDraftJson } from '../../src/ai/openRouterDraftGenerator.js';
+/** AI 초안 프롬프트 조립과 Gemini 모델 출력 파싱 fallback을 검증합니다. */
+import { describe, expect, it } from 'vitest';
+import { buildDraftPrompt, parseDraftJson } from '../../src/ai/geminiDraftGenerator.js';
 import { baseInquiry } from '../fixtures/inquiries.js';
 
-describe('openRouterDraftGenerator', () => {
+describe('geminiDraftGenerator', () => {
   it('should build a prompt that includes the inquiry and retrieved context', () => {
     // Arrange
     const context = ['FAQ: 서비스는 앱 내 설정에서 확인할 수 있습니다.'];
@@ -22,7 +23,7 @@ describe('openRouterDraftGenerator', () => {
       summary: '사용법 문의',
       subject: '문의 답변드립니다',
       body: '안녕하세요. 안내드립니다.',
-      missingInformation: []
+      missingInformation: [],
     });
 
     // Act
@@ -35,7 +36,7 @@ describe('openRouterDraftGenerator', () => {
       subject: '문의 답변드립니다',
       body: '안녕하세요. 안내드립니다.',
       risk: { level: 'low', reasons: [] },
-      missingInformation: []
+      missingInformation: [],
     });
   });
 
