@@ -1,7 +1,7 @@
 import { google, type sheets_v4 } from 'googleapis';
 import type { OAuth2Client } from 'google-auth-library';
 import type { Inquiry } from '../domain/inquiry.js';
-import { buildManagedColumnUpdates, mapRowToInquiry } from './sheetColumns.js';
+import { buildManagedColumnUpdates, getReplyEmail, mapRowToInquiry } from './sheetColumns.js';
 
 /** Google Sheet에 worker가 직접 관리하는 출력 컬럼 목록입니다. */
 const managedColumns = [
@@ -20,6 +20,11 @@ const managedColumns = [
   'gmail_message_id',
   'error_message',
 ] as const;
+
+const retryablePreReviewStatuses = new Set(['drafting', 'failed', 'new']);
+const headerRetryAttempts = 3;
+const requestRetryAttempts = 3;
+const retryDelayMs = 250;
 
 /** googleapis의 values 응답 중 이 worker가 사용하는 최소 형태입니다. */
 type ValueRange = {
@@ -42,6 +47,13 @@ type SheetsLike = {
         valueInputOption: string;
         requestBody: { values: string[][] };
       }): Promise<unknown>;
+      batchUpdate(args: {
+        spreadsheetId: string;
+        requestBody: {
+          data: Array<{ range: string; values: string[][] }>;
+          valueInputOption: string;
+        };
+      }): Promise<unknown>;
     };
   };
 };
@@ -55,6 +67,8 @@ type SheetsLike = {
  * @public
  */
 export class GoogleSheetsClient {
+  private headerCache: string[] | null = null;
+
   constructor(
     private readonly sheets: SheetsLike,
     private readonly spreadsheetId: string,
@@ -88,10 +102,32 @@ export class GoogleSheetsClient {
    */
   async listNewInquiries(): Promise<Inquiry[]> {
     const { headers, rows } = await this.readRows();
+    const discordMessageIdIndex = headers.indexOf('discord_message_id');
 
     return rows
-      .map((row, index) => mapRowToInquiry(headers, row, index + 2))
-      .filter((inquiry) => inquiry.status === 'new');
+      .map((row, index) => ({
+        discordMessageId: discordMessageIdIndex >= 0 ? row[discordMessageIdIndex] ?? '' : '',
+        inquiry: mapRowToInquiry(headers, row, index + 2),
+      }))
+      .filter(({ discordMessageId, inquiry }) => isRetryablePreReviewInquiry(inquiry, discordMessageId))
+      .map(({ inquiry }) => inquiry);
+  }
+
+  /**
+   * Google Sheet의 1-based row 번호로 문의를 한 건 조회합니다.
+   *
+   * @param rowNumber - Google Form submit event가 전달한 실제 Sheet row 번호
+   * @returns 해당 row의 문의. 데이터 row가 없으면 `null`
+   */
+  async findInquiryByRow(rowNumber: number): Promise<Inquiry | null> {
+    const { headers, rows } = await this.readRows();
+    const row = rows[rowNumber - 2];
+
+    if (!row) {
+      return null;
+    }
+
+    return mapRowToInquiry(headers, row, rowNumber);
   }
 
   /**
@@ -104,17 +140,25 @@ export class GoogleSheetsClient {
     rowNumber: number,
     values: Record<string, string>,
   ): Promise<void> {
-    const { headers } = await this.readRows();
+    const headers = await this.readHeaders();
     const updates = buildManagedColumnUpdates(headers, values);
 
-    for (const update of updates) {
-      await this.sheets.spreadsheets.values.update({
-        spreadsheetId: this.spreadsheetId,
-        range: `'${this.sheetName}'!${toA1Column(update.columnIndex + 1)}${rowNumber}`,
-        valueInputOption: 'RAW',
-        requestBody: { values: [[update.value]] },
-      });
+    if (!updates.length) {
+      return;
     }
+
+    await retryOperation(async () => {
+      await this.sheets.spreadsheets.values.batchUpdate({
+        spreadsheetId: this.spreadsheetId,
+        requestBody: {
+          data: updates.map((update) => ({
+            range: `'${this.sheetName}'!${toA1Column(update.columnIndex + 1)}${rowNumber}`,
+            values: [[update.value]],
+          })),
+          valueInputOption: 'RAW',
+        },
+      });
+    }, requestRetryAttempts);
   }
 
   /**
@@ -124,7 +168,7 @@ export class GoogleSheetsClient {
    * 첫 실행 때 사람이 Sheet header를 직접 만들지 않아도 worker 상태 저장 필드를 사용할 수 있게 합니다.
    */
   async ensureManagedColumns(): Promise<void> {
-    const { headers } = await this.readRows();
+    const headers = await this.readHeaders();
     const missing = managedColumns.filter((column) => !headers.includes(column));
 
     if (missing.length === 0) {
@@ -134,14 +178,18 @@ export class GoogleSheetsClient {
     const startColumn = headers.length + 1;
     const endColumn = headers.length + missing.length;
 
-    await this.sheets.spreadsheets.values.update({
-      spreadsheetId: this.spreadsheetId,
-      range: `'${this.sheetName}'!${toA1Column(startColumn)}1:${toA1Column(endColumn)}1`,
-      valueInputOption: 'RAW',
-      requestBody: {
-        values: [missing as unknown as string[]],
-      },
-    });
+    await retryOperation(async () => {
+      await this.sheets.spreadsheets.values.update({
+        spreadsheetId: this.spreadsheetId,
+        range: `'${this.sheetName}'!${toA1Column(startColumn)}1:${toA1Column(endColumn)}1`,
+        valueInputOption: 'RAW',
+        requestBody: {
+          values: [missing as unknown as string[]],
+        },
+      });
+    }, requestRetryAttempts);
+
+    this.headerCache = [...headers, ...missing];
   }
 
   /**
@@ -160,7 +208,6 @@ export class GoogleSheetsClient {
     const { headers, rows } = await this.readRows();
     const inquiryIdIndex = headers.indexOf('inquiry_id');
     const statusIndex = headers.indexOf('status');
-    const emailIndex = headers.indexOf('Email Address');
     const subjectIndex = headers.indexOf('draft_subject');
     const bodyIndex = headers.indexOf('draft_body');
 
@@ -170,7 +217,7 @@ export class GoogleSheetsClient {
       if (row[inquiryIdIndex] === inquiryId) {
         return {
           rowNumber: i + 2,
-          email: row[emailIndex] ?? '',
+          email: getReplyEmail(headers, row),
           draftSubject: row[subjectIndex] ?? '',
           draftBody: row[bodyIndex] ?? '',
           status: row[statusIndex] ?? 'new',
@@ -183,16 +230,31 @@ export class GoogleSheetsClient {
 
   /** 전체 Sheet 값을 읽고 첫 행을 header, 나머지를 data row로 분리합니다. */
   private async readRows(): Promise<{ headers: string[]; rows: string[][] }> {
-    const response = await this.sheets.spreadsheets.values.get({
+    const response = await retryOperation(async () => this.sheets.spreadsheets.values.get({
       spreadsheetId: this.spreadsheetId,
       range: `'${this.sheetName}'`,
-    });
+    }), requestRetryAttempts);
 
     const values = response.data?.values ?? [];
     const headers = (values[0] ?? []).map(String);
     const rows = values.slice(1).map((row) => row.map(String));
+    this.headerCache = headers;
 
     return { headers, rows };
+  }
+
+  private async readHeaders(): Promise<string[]> {
+    if (this.headerCache) {
+      return this.headerCache;
+    }
+
+    const response = await retryOperation(async () => this.sheets.spreadsheets.values.get({
+      spreadsheetId: this.spreadsheetId,
+      range: `'${this.sheetName}'!1:1`,
+    }), headerRetryAttempts);
+    const headers = (response.data?.values?.[0] ?? []).map(String);
+    this.headerCache = headers;
+    return headers;
   }
 }
 
@@ -213,4 +275,36 @@ export function toA1Column(index: number): string {
   }
 
   return result;
+}
+
+function isRetryablePreReviewInquiry(inquiry: Inquiry, discordMessageId: string): boolean {
+  if (!retryablePreReviewStatuses.has(inquiry.status)) {
+    return false;
+  }
+
+  return !discordMessageId;
+}
+
+async function retryOperation<T>(operation: () => Promise<T>, attempts: number): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+
+      if (attempt < attempts) {
+        await sleep(retryDelayMs * attempt);
+      }
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }

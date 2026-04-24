@@ -1,8 +1,10 @@
 import type { Inquiry, InquiryDraft } from '../domain/inquiry.js';
+import { WorkItemLock } from './workItemLock.js';
 
 /** Google Sheets 저장소가 workflow에 제공해야 하는 최소 기능입니다. */
 export interface SheetPort {
   ensureManagedColumns(): Promise<void>;
+  findInquiryByRow(rowNumber: number): Promise<Inquiry | null>;
   listNewInquiries(): Promise<Inquiry[]>;
   updateManagedFields(rowNumber: number, values: Record<string, string>): Promise<void>;
 }
@@ -26,11 +28,16 @@ export interface DiscordReviewPort {
  * @public
  */
 export class InquiryWorkflow {
+  private readonly processingLock: WorkItemLock;
+
   constructor(
     private readonly sheets: SheetPort,
     private readonly drafts: DraftPort,
     private readonly discord: DiscordReviewPort,
-  ) {}
+    processingLock?: WorkItemLock,
+  ) {
+    this.processingLock = processingLock ?? new WorkItemLock();
+  }
 
   /**
    * 신규 문의를 한 번 조회하고 각 문의를 review 대기 상태까지 진행합니다.
@@ -42,13 +49,54 @@ export class InquiryWorkflow {
     const inquiries = await this.sheets.listNewInquiries();
 
     for (const inquiry of inquiries) {
+      try {
+        await this.processQueuedInquiry(inquiry);
+      } catch {
+        // Polling은 다른 문의 처리까지 계속 진행해야 합니다.
+      }
+    }
+  }
+
+  /**
+   * Google Form submit webhook이 전달한 단일 row를 review 대기 상태까지 진행합니다.
+   *
+   * @param rowNumber - Google Sheet의 1-based row 번호
+   * @returns 신규 문의를 실제 처리했으면 `true`, 이미 처리된 row면 `false`
+   */
+  async processSubmittedRow(rowNumber: number): Promise<boolean> {
+    await this.sheets.ensureManagedColumns();
+    const inquiry = await this.sheets.findInquiryByRow(rowNumber);
+
+    if (!inquiry || !isPreReviewRetryableStatus(inquiry.status)) {
+      return false;
+    }
+
+    await this.processQueuedInquiry(inquiry);
+    return true;
+  }
+
+  private async processQueuedInquiry(inquiry: Inquiry): Promise<void> {
+    const lockKey = `row:${inquiry.rowNumber}`;
+    const lockResult = await this.processingLock.tryAcquire(lockKey, 'workflow');
+
+    if (!lockResult.acquired) {
+      return;
+    }
+
+    try {
       await this.processNewInquiry(inquiry);
+    } catch (error) {
+      await this.markInquiryFailed(inquiry, error);
+      throw error;
+    } finally {
+      this.processingLock.release(lockKey, 'workflow');
     }
   }
 
   /** 단일 문의를 drafting -> pending_review 상태로 전이합니다. */
   private async processNewInquiry(inquiry: Inquiry): Promise<void> {
     await this.sheets.updateManagedFields(inquiry.rowNumber, {
+      error_message: '',
       inquiry_id: inquiry.inquiryId,
       status: 'drafting',
     });
@@ -64,6 +112,20 @@ export class InquiryWorkflow {
       draft_body: draft.body,
       discord_channel_id: review.channelId,
       discord_message_id: review.messageId,
+      error_message: '',
     });
   }
+
+  private async markInquiryFailed(inquiry: Inquiry, error: unknown): Promise<void> {
+    const message = error instanceof Error ? error.message : String(error);
+
+    await this.sheets.updateManagedFields(inquiry.rowNumber, {
+      error_message: message,
+      status: 'failed',
+    });
+  }
+}
+
+function isPreReviewRetryableStatus(status: Inquiry['status']): boolean {
+  return status === 'drafting' || status === 'failed' || status === 'new';
 }
