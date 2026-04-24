@@ -1,9 +1,11 @@
 # Inquiry Agent Runbook
 
+운영 플로우와 `.env` 항목 설명은 [운영-플로우-및-env-설정-가이드.md](</C:/Users/user/Desktop/Inquiry-Agent/docs/운영-플로우-및-env-설정-가이드.md:1>)를 기준으로 확인합니다.
+
 ## Local Setup
 
-1. Copy `.env.example` to `.env`.
-2. Fill Google OAuth credentials, Discord bot token, OpenRouter API key, Gmail sender, and sheet settings.
+1. Create or update `.env`.
+2. Fill Google OAuth credentials, Discord bot token, Gemini API key, Gmail sender, and sheet settings.
 3. Run `npm install`.
 4. Run `npm run test`.
 5. Run `npm run typecheck`.
@@ -24,6 +26,18 @@
    - `https://www.googleapis.com/auth/gmail.send`
 3. Make sure the same Google account has access to the target spreadsheet.
 4. Make sure the same Google account can send mail as `GMAIL_FROM_EMAIL`.
+
+## Google Form Webhook Setup
+
+1. Set `WEBHOOK_PORT=3000`.
+2. Set `WEBHOOK_SECRET` to a shared secret string.
+3. Keep `ENABLE_FALLBACK_POLLING=true` and `POLL_INTERVAL_MS=600000` so missed webhook events are recovered every 10 minutes.
+4. Deploy the worker somewhere Google Apps Script can reach. Apps Script cannot call `localhost`; use a public deployment URL or a temporary tunnel during local testing.
+5. In the Google Sheet connected to the form, open Extensions > Apps Script.
+6. Add the script from `docs/apps-script/google-form-submit-webhook.gs`.
+7. Set `WEBHOOK_URL` to `https://YOUR_PUBLIC_BOT_URL/webhooks/google-form-submit`.
+8. Set `WEBHOOK_SECRET` in Apps Script to the same value as `.env`.
+9. Add an installable trigger for `onFormSubmit` with event source "From spreadsheet" and event type "On form submit".
 
 ## First Dry-Run Validation
 
@@ -51,5 +65,5 @@
 - Do not run more than one worker instance until durable multi-instance locking is implemented.
 - Keep high-risk warnings visible for `OTHER`, deletion, legal, payment, and security inquiries.
 - If Gmail send fails, store `failed` in `status` and write the reason to `error_message`.
-- If OpenRouter fails or returns invalid JSON, fall back to the safe draft and require human review in Discord.
+- If Gemini fails or returns invalid JSON, fall back to the safe draft and require human review in Discord.
 - Do not remove the Discord approval gate in production without a separate safety review.

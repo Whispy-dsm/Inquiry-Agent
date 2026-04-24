@@ -6,7 +6,7 @@
 
 **Architecture:** A single-instance Node.js worker owns polling, Discord interactions, AI drafting, Gmail sending, and Sheet status updates. The system uses Google Sheets as the source of truth for inquiry state, Discord as the human approval queue, and an interchangeable context provider for future DB/vector context.
 
-**Tech Stack:** Node.js 20+, TypeScript, Vitest, Zod, googleapis, discord.js, OpenRouter SDK, dotenv, pino.
+**Tech Stack:** Node.js 20+, TypeScript, Vitest, Zod, googleapis, discord.js, Google Gen AI SDK, dotenv, pino.
 
 ---
 
@@ -87,7 +87,7 @@ The Google Form already classifies inquiries into four user-facing categories:
 package.json
 tsconfig.json
 vitest.config.ts
-.env.example
+.env
 .gitignore
 src/
   config/env.ts
@@ -97,7 +97,7 @@ src/
   sheets/sheetColumns.ts
   sheets/googleSheetsClient.ts
   ai/contextProvider.ts
-  ai/openRouterDraftGenerator.ts
+  ai/GeminiDraftGenerator.ts
   ai/prompt.ts
   discord/discordBot.ts
   discord/renderInquiryMessage.ts
@@ -112,7 +112,7 @@ tests/
   fixtures/inquiries.ts
   domain/risk.test.ts
   sheets/sheetColumns.test.ts
-  ai/openRouterDraftGenerator.test.ts
+  ai/GeminiDraftGenerator.test.ts
   discord/renderInquiryMessage.test.ts
   email/mime.test.ts
   workflow/inquiryLock.test.ts
@@ -126,7 +126,7 @@ Responsibilities:
 
 - `src/domain/*`: shared types and pure business rules.
 - `src/sheets/*`: Google Sheets row mapping and updates.
-- `src/ai/*`: prompt, context abstraction, OpenRouter implementation.
+- `src/ai/*`: prompt, context abstraction, Gemini implementation.
 - `src/discord/*`: Discord messages, buttons, modals, interaction handling.
 - `src/email/*`: Gmail raw MIME encoding and send wrapper.
 - `src/workflow/*`: orchestration and duplicate-send protection.
@@ -148,8 +148,8 @@ GOOGLE_OAUTH_REFRESH_TOKEN=replace-with-refresh-token
 DISCORD_BOT_TOKEN=replace-with-discord-bot-token
 DISCORD_INQUIRY_CHANNEL_ID=replace-with-channel-id
 
-OPENROUTER_API_KEY=replace-with-openrouter-key
-OPENROUTER_MODEL=openai/gpt-4o-mini
+GEMINI_API_KEY=replace-with-gemini-key
+GEMINI_MODEL=gemini-2.5-flash-lite
 
 GMAIL_FROM_EMAIL=support@example.com
 GMAIL_FROM_NAME=Support Team
@@ -218,7 +218,7 @@ failed
 - Create: `package.json`
 - Create: `tsconfig.json`
 - Create: `vitest.config.ts`
-- Create: `.env.example`
+- Prepare locally: `.env`
 - Create: `.gitignore`
 
 - [ ] **Step 1: Write the package manifest**
@@ -241,7 +241,7 @@ Create `package.json`:
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@openrouter/sdk": "^0.7.0",
+    "@gemini/sdk": "^1.50.1",
     "discord.js": "^14.19.3",
     "dotenv": "^16.5.0",
     "googleapis": "^148.0.0",
@@ -306,9 +306,9 @@ export default defineConfig({
 });
 ```
 
-- [ ] **Step 4: Write env example**
+- [ ] **Step 4: Prepare local env file**
 
-Create `.env.example` using the Environment Contract section exactly.
+Create a local `.env` using the Environment Contract section exactly.
 
 - [ ] **Step 5: Write gitignore**
 
@@ -320,7 +320,6 @@ dist/
 coverage/
 .env
 .env.*
-!.env.example
 *.log
 *.local
 google-credentials.json
@@ -355,7 +354,7 @@ Expected: typecheck passes; tests pass with zero tests or no test files.
 Only run this commit if the user has explicitly authorized commits in the execution session:
 
 ```bash
-git add package.json package-lock.json tsconfig.json vitest.config.ts .env.example .gitignore
+git add package.json package-lock.json tsconfig.json vitest.config.ts .gitignore
 git commit -m "Prepare TypeScript inquiry agent foundation
 
 The project needs a strict TypeScript runtime before Sheets, Discord, AI, and Gmail work can be implemented safely.
@@ -732,8 +731,8 @@ const envSchema = z.object({
   GOOGLE_OAUTH_REFRESH_TOKEN: z.string().min(1),
   DISCORD_BOT_TOKEN: z.string().min(1),
   DISCORD_INQUIRY_CHANNEL_ID: z.string().min(1),
-  OPENROUTER_API_KEY: z.string().min(1),
-  OPENROUTER_MODEL: z.string().min(1).default('openai/gpt-4o-mini'),
+  gemini_API_KEY: z.string().min(1),
+  gemini_MODEL: z.string().min(1).default('gemini-2.5-flash-lite'),
   GMAIL_FROM_EMAIL: z.string().email(),
   GMAIL_FROM_NAME: z.string().min(1).default('Support Team'),
   POLL_INTERVAL_MS: z.coerce.number().int().positive().default(30000),
@@ -881,19 +880,19 @@ Expected: PASS.
 **Files:**
 - Create: `src/ai/contextProvider.ts`
 - Create: `src/ai/prompt.ts`
-- Create: `src/ai/openRouterDraftGenerator.ts`
-- Create: `tests/ai/openRouterDraftGenerator.test.ts`
+- Create: `src/ai/GeminiDraftGenerator.ts`
+- Create: `tests/ai/GeminiDraftGenerator.test.ts`
 
 - [ ] **Step 1: Write failing AI draft test**
 
-Create `tests/ai/openRouterDraftGenerator.test.ts`:
+Create `tests/ai/GeminiDraftGenerator.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
-import { buildDraftPrompt, parseDraftJson } from '../../src/ai/openRouterDraftGenerator.js';
+import { buildDraftPrompt, parseDraftJson } from '../../src/ai/GeminiDraftGenerator.js';
 import { baseInquiry } from '../fixtures/inquiries.js';
 
-describe('openRouterDraftGenerator', () => {
+describe('GeminiDraftGenerator', () => {
   it('builds a prompt that includes inquiry and context', () => {
     const prompt = buildDraftPrompt(baseInquiry, ['FAQ: 서비스는 앱 내 설정에서 확인할 수 있습니다.']);
     expect(prompt).toContain('SERVICE_QUESTION');
@@ -919,7 +918,7 @@ describe('openRouterDraftGenerator', () => {
 Run:
 
 ```bash
-npm run test -- tests/ai/openRouterDraftGenerator.test.ts
+npm run test -- tests/ai/GeminiDraftGenerator.test.ts
 ```
 
 Expected: FAIL because AI files do not exist.
@@ -957,10 +956,10 @@ export const draftSystemPrompt = [
 ].join('\n');
 ```
 
-Create `src/ai/openRouterDraftGenerator.ts`:
+Create `src/ai/GeminiDraftGenerator.ts`:
 
 ```ts
-import OpenRouter from '@openrouter/sdk';
+import gemini from '@gemini/sdk';
 import { z } from 'zod';
 import type { Inquiry, InquiryDraft } from '../domain/inquiry.js';
 import { classifyRisk } from '../domain/risk.js';
@@ -978,15 +977,15 @@ export interface DraftGenerator {
   generateDraft(inquiry: Inquiry): Promise<InquiryDraft>;
 }
 
-export class OpenRouterDraftGenerator implements DraftGenerator {
-  private readonly client: OpenRouter;
+export class GeminiDraftGenerator implements DraftGenerator {
+  private readonly client: gemini;
 
   constructor(
     apiKey: string,
     private readonly model: string,
     private readonly contextProvider: ContextProvider
   ) {
-    this.client = new OpenRouter({ apiKey });
+    this.client = new gemini({ apiKey });
   }
 
   async generateDraft(inquiry: Inquiry): Promise<InquiryDraft> {
@@ -1054,7 +1053,7 @@ function extractJson(text: string): string {
 Run:
 
 ```bash
-npm run test -- tests/ai/openRouterDraftGenerator.test.ts
+npm run test -- tests/ai/GeminiDraftGenerator.test.ts
 ```
 
 Expected: PASS.
@@ -1690,7 +1689,7 @@ import { google } from 'googleapis';
 import pino from 'pino';
 import { loadEnv } from './config/env.js';
 import { StaticContextProvider } from './ai/contextProvider.js';
-import { OpenRouterDraftGenerator } from './ai/openRouterDraftGenerator.js';
+import { GeminiDraftGenerator } from './ai/GeminiDraftGenerator.js';
 import { DiscordReviewBot } from './discord/discordBot.js';
 import { handleEditSubmit, handleReviewButton } from './discord/interactionHandlers.js';
 import { GmailClient } from './email/gmailClient.js';
@@ -1711,7 +1710,7 @@ export async function startWorker(): Promise<void> {
   const sheetsClient = GoogleSheetsClient.fromOAuth(oauth, env.GOOGLE_SHEET_ID, env.GOOGLE_SHEET_NAME);
   const gmailClient = GmailClient.fromOAuth(oauth, env.DRY_RUN_EMAIL);
   const contextProvider = new StaticContextProvider([]);
-  const draftGenerator = new OpenRouterDraftGenerator(env.OPENROUTER_API_KEY, env.OPENROUTER_MODEL, contextProvider);
+  const draftGenerator = new GeminiDraftGenerator(env.gemini_API_KEY, env.gemini_MODEL, contextProvider);
   const discordBot = new DiscordReviewBot(env.DISCORD_BOT_TOKEN, env.DISCORD_INQUIRY_CHANNEL_ID);
   const inquiryLock = new InquiryLock();
   const workflow = new InquiryWorkflow(sheetsClient, draftGenerator, discordBot);
@@ -1881,8 +1880,8 @@ Create `docs/runbook.md`:
 
 ## Local Setup
 
-1. Copy `.env.example` to `.env`.
-2. Fill Google OAuth credentials, Discord bot token, OpenRouter API key, Gmail sender, and sheet settings.
+1. Create or update `.env`.
+2. Fill Google OAuth credentials, Discord bot token, Gemini API key, Gmail sender, and sheet settings.
 3. Run `npm install`.
 4. Run `npm run typecheck`.
 5. Run `npm run test`.
@@ -1914,7 +1913,7 @@ Create `docs/runbook.md`:
 - Do not run more than one worker instance until durable locking is implemented.
 - Keep high-risk warnings visible for `OTHER`, deletion, legal, payment, and security inquiries.
 - If Gmail sending fails, set row `status` to `failed` and write `error_message`.
-- If OpenRouter fails, post a fallback draft that asks the CX team to manually review.
+- If Gemini fails, post a fallback draft that asks the CX team to manually review.
 ```
 
 - [ ] **Step 3: Verify docs have no empty sections**
@@ -2034,3 +2033,4 @@ Use subagent-driven development if available:
 4. Task 13-14: runbook, evals, verification.
 
 If executing inline, checkpoint after Tasks 4, 8, 12, and 14.
+
