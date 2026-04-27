@@ -1,0 +1,166 @@
+name: Inquiry Agent CI/CD
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: inquiry-agent
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    outputs:
+      sha_short: ${{ steps.vars.outputs.sha_short }}
+      image_owner: ${{ steps.image.outputs.image_owner }}
+      image: ${{ steps.image.outputs.image }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get Git SHA
+        id: vars
+        run: echo "sha_short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set image name
+        id: image
+        run: |
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          IMAGE="${REGISTRY}/${OWNER}/${IMAGE_NAME}"
+
+          echo "image_owner=${OWNER}" >> "$GITHUB_OUTPUT"
+          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build
+        run: npm run build
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ steps.image.outputs.image }}:latest
+            ${{ steps.image.outputs.image }}:${{ steps.vars.outputs.sha_short }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare server directory
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT }}
+          script: |
+            set -e
+            mkdir -p "${{ secrets.SERVER_APP_DIR }}"
+
+      - name: Upload docker compose file
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT }}
+          source: "docker-compose.yml"
+          target: "${{ secrets.SERVER_APP_DIR }}"
+
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          GITHUB_OWNER: ${{ needs.build-and-push.outputs.image_owner }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT }}
+          envs: GITHUB_OWNER,IMAGE_NAME,DISCORD_TOKEN,OPENAI_API_KEY
+          script: |
+            set -e
+
+            cd "${{ secrets.SERVER_APP_DIR }}"
+
+            echo "${{ secrets.GHCR_READ_TOKEN }}" | docker login ghcr.io \
+              -u "${{ github.actor }}" \
+              --password-stdin
+
+            docker compose pull
+            docker compose up -d
+
+            docker image prune -f
+
+  notify:
+    needs:
+      - build-and-push
+      - deploy
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Discord notification
+        if: ${{ secrets.DISCORD_WEBHOOK_URL != '' }}
+        run: |
+          if [ "${{ needs.build-and-push.result }}" = "success" ] && [ "${{ needs.deploy.result }}" = "success" ]; then
+            COLOR=3066993
+            STATUS="✅ PROD 배포 완료"
+          else
+            COLOR=15158332
+            STATUS="❌ PROD 배포 실패"
+          fi
+
+          curl -H "Content-Type: application/json" \
+               -d "{
+                 \"embeds\": [{
+                   \"title\": \"${STATUS}\",
+                   \"description\": \"Commit: \`${{ needs.build-and-push.outputs.sha_short }}\`\nBranch: \`${{ github.ref_name }}\`\nImage: \`${{ needs.build-and-push.outputs.image }}\`\",
+                   \"color\": ${COLOR},
+                   \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%S.000Z)\"
+                 }]
+               }" \
+               "${{ secrets.DISCORD_WEBHOOK_URL }}"
