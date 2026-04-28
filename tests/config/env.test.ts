@@ -14,6 +14,7 @@ describe('loadEnv', () => {
       GOOGLE_OAUTH_REFRESH_TOKEN: 'refresh-token',
       DISCORD_BOT_TOKEN: 'discord-token',
       DISCORD_INQUIRY_CHANNEL_ID: 'channel-id',
+      DISCORD_REVIEW_POST_INTERVAL_MS: '1500',
       GEMINI_API_KEY: 'gemini-key',
       GEMINI_MODEL: 'gemini-2.5-flash-lite',
       GMAIL_FROM_EMAIL: 'support@example.com',
@@ -30,6 +31,7 @@ describe('loadEnv', () => {
 
     // Assert
     expect(result.GOOGLE_SHEET_ID).toBe('sheet-id');
+    expect(result.DISCORD_REVIEW_POST_INTERVAL_MS).toBe(1500);
     expect(result.POLL_INTERVAL_MS).toBe(600000);
     expect(result.ENABLE_FALLBACK_POLLING).toBe(true);
     expect(result.WEBHOOK_PORT).toBe(3000);
@@ -60,5 +62,27 @@ describe('loadEnv', () => {
     // Assert
     expect(result.ENABLE_FALLBACK_POLLING).toBe(false);
     expect(result.DRY_RUN_EMAIL).toBe(false);
+  });
+
+  it('should default Discord review post interval to one second', () => {
+    // Arrange
+    const input = {
+      GOOGLE_SHEET_ID: 'sheet-id',
+      GOOGLE_SHEET_NAME: '?뙔 Whispy?먭쾶 臾몄쓽?섍린(?묐떟)',
+      GOOGLE_OAUTH_CLIENT_ID: 'client-id',
+      GOOGLE_OAUTH_CLIENT_SECRET: 'client-secret',
+      GOOGLE_OAUTH_REFRESH_TOKEN: 'refresh-token',
+      DISCORD_BOT_TOKEN: 'discord-token',
+      DISCORD_INQUIRY_CHANNEL_ID: 'channel-id',
+      GEMINI_API_KEY: 'gemini-key',
+      GMAIL_FROM_EMAIL: 'support@example.com',
+      WEBHOOK_SECRET: 'shared-secret',
+    };
+
+    // Act
+    const result = loadEnv(input);
+
+    // Assert
+    expect(result.DISCORD_REVIEW_POST_INTERVAL_MS).toBe(1000);
   });
 });

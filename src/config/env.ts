@@ -29,6 +29,7 @@ const envSchema = z.object({
   GOOGLE_OAUTH_REFRESH_TOKEN: z.string().min(1),
   DISCORD_BOT_TOKEN: z.string().min(1),
   DISCORD_INQUIRY_CHANNEL_ID: z.string().min(1),
+  DISCORD_REVIEW_POST_INTERVAL_MS: z.coerce.number().int().nonnegative().default(1000),
   GEMINI_API_KEY: z.string().min(1),
   GEMINI_MODEL: z.string().min(1).default('gemini-2.5-flash-lite'),
   GMAIL_FROM_EMAIL: z.string().email(),

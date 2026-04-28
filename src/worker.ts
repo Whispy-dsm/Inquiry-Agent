@@ -106,7 +106,12 @@ export async function startWorker(
     env.GEMINI_MODEL,
     contextProvider,
   );
-  const discordBot = new DiscordReviewBot(env.DISCORD_BOT_TOKEN, env.DISCORD_INQUIRY_CHANNEL_ID);
+  const discordBot = new DiscordReviewBot(
+    env.DISCORD_BOT_TOKEN,
+    env.DISCORD_INQUIRY_CHANNEL_ID,
+    undefined,
+    env.DISCORD_REVIEW_POST_INTERVAL_MS,
+  );
   const inquiryLock = new InquiryLock();
   const workflow = new InquiryWorkflow(sheetsClient, draftGenerator, discordBot);
   const webhookServer = createGoogleFormWebhookServer({
