@@ -1,5 +1,15 @@
 # Agent Git Convention
 
+## Push Tag Rule
+
+Every push to a shared remote branch must have a semantic version git tag.
+Use the `v{MAJOR}.{MINOR}.{PATCH}` format and push the tag together with the branch update.
+If several commits are pushed as one deployment or release unit, tag the final commit of that pushed unit.
+For issue or PR work, create the tag after the issue or PR scope is verified and merged or otherwise ready for release.
+
+Do not use project names, branch names, issue numbers, or PR numbers as release tags.
+Use issue and PR numbers in branch names, commit messages, and PR text instead.
+
 ## 브랜치 포맷
 
 ```text
