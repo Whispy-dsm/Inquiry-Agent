@@ -88,12 +88,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Encode docker compose file
-        id: compose
+      - name: Encode Docker stack file
+        id: stack
         run: |
           {
-            echo 'compose_b64<<EOF'
-            base64 -w 0 docker-compose.yml
+            echo 'stack_b64<<EOF'
+            base64 -w 0 docker-stack.yml
             echo
             echo EOF
           } >> "$GITHUB_OUTPUT"
@@ -129,14 +129,14 @@ jobs:
           GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
           APP_ENV: ${{ secrets.APP_ENV }}
           SERVER_APP_DIR: ${{ secrets.SERVER_APP_DIR }}
-          COMPOSE_FILE_B64: ${{ steps.compose.outputs.compose_b64 }}
+          STACK_FILE_B64: ${{ steps.stack.outputs.stack_b64 }}
 
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: ${{ secrets.SERVER_PORT }}
-          envs: GITHUB_OWNER,IMAGE_NAME,GHCR_READ_TOKEN,APP_ENV,SERVER_APP_DIR,COMPOSE_FILE_B64
+          envs: GITHUB_OWNER,IMAGE_NAME,GHCR_READ_TOKEN,APP_ENV,SERVER_APP_DIR,STACK_FILE_B64
           script: |
             set -e
 
@@ -149,9 +149,9 @@ jobs:
             mkdir -p "${APP_DIR}"
             cd "${APP_DIR}"
 
-            printf '%s' "${COMPOSE_FILE_B64}" | base64 -d > docker-compose.yml
-            if [ ! -s docker-compose.yml ]; then
-              echo "docker-compose.yml was not written into $PWD" >&2
+            printf '%s' "${STACK_FILE_B64}" | base64 -d > docker-stack.yml
+            if [ ! -s docker-stack.yml ]; then
+              echo "docker-stack.yml was not written into $PWD" >&2
               exit 1
             fi
 
@@ -161,8 +161,9 @@ jobs:
               -u "${{ github.actor }}" \
               --password-stdin
 
-            docker-compose pull
-            docker-compose up -d
+            docker rm -f inquiry-agent 2>/dev/null || true
+            docker-compose -f docker-stack.yml config | sed '/^name:/d' > docker-stack.rendered.yml
+            docker stack deploy --with-registry-auth -c docker-stack.rendered.yml inquiry-agent
 
             docker image prune -f
 

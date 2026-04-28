@@ -34,4 +34,9 @@
 
 - Correction: Deployment reached `docker-compose up`, but failed because host port 3000 was already allocated.
 - Rule: Compose files should expose a configurable host port separately from the application listener port when deploying onto shared servers.
+
+## Check project git convention before committing
+
+- Correction: A commit was created with a Lore-style subject but without the repository's required `<type> : <description>` subject format.
+- Rule: Before committing in this repository, read `docs/conventions/agent/git.md` and use subjects such as `ci : ...`, while keeping Lore trailers in the commit body.
 - Rule: For incorrectly entered records, say the handling method requires 담당자 확인.
