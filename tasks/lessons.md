@@ -22,4 +22,10 @@
 
 - Correction: The user clarified that “잘못 입력한 기록은 삭제 후 다시 입력” is wrong because users cannot modify saved records.
 - Rule: For Whispy customer answers, do not tell users to edit or delete-and-recreate saved sleep, focus, or meditation records unless the user explicitly confirms that flow exists.
+
+## Verify remote deployment file placement
+
+- Correction: The deploy job reached the server but `docker-compose` could not find `docker-compose.yml` in `SERVER_APP_DIR`.
+- Rule: When using `scp-action` before a remote deploy, make the deploy step verify the expected file exists in the working directory before running Docker commands.
+- Rule: If the upload action may preserve source paths, normalize or fail with a diagnostic file listing instead of assuming the remote layout.
 - Rule: For incorrectly entered records, say the handling method requires 담당자 확인.
