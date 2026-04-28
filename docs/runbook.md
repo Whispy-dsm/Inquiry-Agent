@@ -2,6 +2,10 @@
 
 운영 플로우와 `.env` 항목 설명은 [운영-플로우-및-env-설정-가이드.md](</C:/Users/user/Desktop/Inquiry-Agent/docs/운영-플로우-및-env-설정-가이드.md:1>)를 기준으로 확인합니다.
 
+## AI Context / RAG Docs
+
+Whispy 고객 문의 답변 초안의 근거 문서는 [docs/rag/README.md](</C:/Users/user/Desktop/Inquiry-Agent/docs/rag/README.md:1>)를 기준으로 관리합니다. Worker는 시작 시 `docs/rag` Markdown을 읽고 문의 유형/본문 키워드에 맞는 section을 Gemini 컨텍스트로 전달합니다.
+
 ## Local Setup
 
 1. Create or update `.env`.

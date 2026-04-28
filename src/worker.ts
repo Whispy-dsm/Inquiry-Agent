@@ -1,6 +1,6 @@
 import { google } from 'googleapis';
 import pino from 'pino';
-import { StaticContextProvider } from './ai/contextProvider.js';
+import { MarkdownDirectoryContextProvider } from './ai/contextProvider.js';
 import { GeminiDraftGenerator } from './ai/geminiDraftGenerator.js';
 import { loadEnv } from './config/env.js';
 import { DiscordReviewBot } from './discord/discordBot.js';
@@ -100,7 +100,7 @@ export async function startWorker(
 
   const sheetsClient = GoogleSheetsClient.fromOAuth(oauth, env.GOOGLE_SHEET_ID, env.GOOGLE_SHEET_NAME);
   const gmailClient = GmailClient.fromOAuth(oauth, env.DRY_RUN_EMAIL);
-  const contextProvider = new StaticContextProvider([]);
+  const contextProvider = new MarkdownDirectoryContextProvider();
   const draftGenerator = new GeminiDraftGenerator(
     env.GEMINI_API_KEY,
     env.GEMINI_MODEL,

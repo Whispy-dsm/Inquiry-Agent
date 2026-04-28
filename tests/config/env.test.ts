@@ -8,7 +8,7 @@ describe('loadEnv', () => {
       NODE_ENV: 'test',
       LOG_LEVEL: 'debug',
       GOOGLE_SHEET_ID: 'sheet-id',
-      GOOGLE_SHEET_NAME: 'Form Responses 1',
+      GOOGLE_SHEET_NAME: '🌙 Whispy에게 문의하기(응답)',
       GOOGLE_OAUTH_CLIENT_ID: 'client-id',
       GOOGLE_OAUTH_CLIENT_SECRET: 'client-secret',
       GOOGLE_OAUTH_REFRESH_TOKEN: 'refresh-token',
@@ -41,7 +41,7 @@ describe('loadEnv', () => {
     // Arrange
     const input = {
       GOOGLE_SHEET_ID: 'sheet-id',
-      GOOGLE_SHEET_NAME: 'Form Responses 1',
+      GOOGLE_SHEET_NAME: '🌙 Whispy에게 문의하기(응답)',
       GOOGLE_OAUTH_CLIENT_ID: 'client-id',
       GOOGLE_OAUTH_CLIENT_SECRET: 'client-secret',
       GOOGLE_OAUTH_REFRESH_TOKEN: 'refresh-token',
