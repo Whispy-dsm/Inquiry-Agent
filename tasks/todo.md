@@ -440,3 +440,18 @@ Verification: focused Discord/webhook tests, `npm run typecheck`, `npm test`, `n
 - Continued from injected OMX tmux state and inspected active mode markers.
 - Terminalized stale legacy `ralph`, `team`, and `skill-active` markers that were already cancelled/completed or unrelated to the Docker entrypoint task.
 - Verification: `omx state list-active --json` now returns no active modes.
+
+## Swarm Stopped Container Cleanup
+
+### Plan
+
+- [x] Add deploy-time cleanup for stopped containers belonging only to the Inquiry Agent Swarm service.
+- [x] Wait for service containers to settle after `docker stack deploy`.
+- [x] Verify workflow syntax and inspect the deploy diff.
+
+### Review
+
+- Changed files: `.github/workflows/blank.yml`, `tasks/todo.md`
+- Simplifications made: added cleanup inside the existing deploy SSH script instead of changing the Swarm topology or replica count.
+- Verification: parsed the workflow YAML with Node's `yaml` package, asserted the deploy script contains the service-scoped cleanup function and prune command, and ran `git diff --check`.
+- Remaining risks: local bash syntax validation could not run in this Windows/WSL shell setup; live behavior still depends on the server's Swarm service name being `inquiry-agent_inquiry-agent`, which matches `docker stack deploy ... inquiry-agent` plus the `inquiry-agent` service key.
