@@ -1,6 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingHttpHeaders, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { z } from 'zod';
+import { sheetNamesMatch } from '../sheets/sheetName.js';
 
 const webhookPath = '/webhooks/google-form-submit';
 const healthPath = '/health';
@@ -92,7 +93,7 @@ export async function handleGoogleFormWebhook(
     return { body: { error: 'Unexpected spreadsheet id' }, statusCode: 409 };
   }
 
-  if (payload.sheetName !== deps.expectedSheetName) {
+  if (!sheetNamesMatch(payload.sheetName, deps.expectedSheetName)) {
     return { body: { error: 'Unexpected sheet name' }, statusCode: 409 };
   }
 
