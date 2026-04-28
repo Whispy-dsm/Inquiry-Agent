@@ -167,4 +167,33 @@ describe('handleGoogleFormWebhook', () => {
     });
     expect(processSubmittedRow).not.toHaveBeenCalled();
   });
+
+  it('should accept sheet names with only invisible whitespace drift', async () => {
+    // Arrange
+    const processSubmittedRow = vi.fn().mockResolvedValue(true);
+
+    // Act
+    const result = await handleGoogleFormWebhook({
+      method: 'POST',
+      path: '/webhooks/google-form-submit',
+      secret: 'shared-secret',
+      body: JSON.stringify({
+        spreadsheetId: 'sheet-id',
+        sheetName: 'Whispy에게 문의하기(응답)\u200B',
+        rowNumber: 7,
+      }),
+    }, {
+      expectedSecret: 'shared-secret',
+      expectedSheetName: ' Whispy에게   문의하기(응답) ',
+      expectedSpreadsheetId: 'sheet-id',
+      workflow: { processSubmittedRow },
+    });
+
+    // Assert
+    expect(result).toEqual({
+      body: { status: 'processed' },
+      statusCode: 200,
+    });
+    expect(processSubmittedRow).toHaveBeenCalledWith(7);
+  });
 });
