@@ -21,6 +21,7 @@ Whispy 고객 문의 답변 초안의 근거 문서는 [docs/rag/README.md](</C:
 1. Create a Discord application and bot.
 2. Invite the bot to the CX server with permission to read messages, send messages, and use slash interactions or button/modal interactions.
 3. Set `DISCORD_INQUIRY_CHANNEL_ID` to the team review channel.
+4. Keep `DISCORD_REVIEW_POST_INTERVAL_MS=1000` unless Discord 429s require a larger gap between review cards.
 
 ## Google Setup
 

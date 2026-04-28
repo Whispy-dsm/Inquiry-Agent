@@ -471,3 +471,37 @@ Verification: focused Discord/webhook tests, `npm run typecheck`, `npm test`, `n
 - Simplifications made: kept `GOOGLE_SHEET_NAME` as the operator-facing setting, but now resolves the actual tab title from Sheets metadata before building A1 ranges and reports available tabs when no match exists.
 - Verification: focused Sheets/webhook tests, `npm run typecheck`, full `npm test`, `npm run build`, and `git diff --check` passed.
 - Remaining risks: this still needs live deployment before the EC2 container will use the metadata-based tab resolution.
+
+## Discord 429 Mitigation
+
+### Plan
+
+- [x] Add regression coverage that repeated review posts reuse the Discord channel lookup.
+- [x] Add regression coverage that concurrent review posts are serialized before hitting `channel.send`.
+- [x] Cache the configured review channel after the first successful fetch.
+- [x] Queue Discord review message sends in-process to reduce burst pressure on Discord rate limits.
+- [x] Run focused Discord tests, typecheck, build, and diff hygiene checks.
+
+### Review
+
+- Changed files: `src/discord/discordBot.ts`, `tests/discord/discordBot.test.ts`, `tasks/todo.md`
+- Simplifications made: kept rate-limit mitigation inside the existing Discord adapter, avoiding a new dependency or external queue service.
+- Verification: focused Discord bot tests, `npm run typecheck`, `npm run build`, full `npm test`, and `git diff --check` passed.
+- Remaining risks: `npm run lint` is still blocked by the repository's existing missing ESLint v9 `eslint.config.*` file; in-process serialization does not coordinate across multiple running containers/processes.
+
+## Discord Review Post Interval Env
+
+### Plan
+
+- [x] Add env parsing coverage for `DISCORD_REVIEW_POST_INTERVAL_MS`.
+- [x] Add Discord bot coverage that the next review post waits for the configured interval.
+- [x] Pass `DISCORD_REVIEW_POST_INTERVAL_MS` from runtime env into `DiscordReviewBot`.
+- [x] Add deployment/docs references for the new env variable.
+- [x] Run focused tests, typecheck, build, full tests, lint attempt, compose config checks, and diff hygiene checks.
+
+### Review
+
+- Changed files: `src/config/env.ts`, `src/discord/discordBot.ts`, `src/worker.ts`, `tests/config/env.test.ts`, `tests/discord/discordBot.test.ts`, `docker-compose.yml`, `docker-stack.yml`, `docs/runbook.md`, `docs/운영-플로우-및-env-설정-가이드.md`, `tasks/todo.md`
+- Simplifications made: kept the throttle as an optional interval on the existing in-process Discord queue instead of adding a separate scheduler or dependency.
+- Verification: focused env/Discord tests, `npm run typecheck`, `npm run build`, full `npm test`, `docker compose -f docker-compose.yml config`, `docker compose -f docker-stack.yml config`, and `git diff --check` passed.
+- Remaining risks: `npm run lint` is still blocked by the existing missing ESLint v9 `eslint.config.*` file; the interval is process-local and does not coordinate multiple running containers.

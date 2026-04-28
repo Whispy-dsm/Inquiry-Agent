@@ -115,6 +115,7 @@ GOOGLE_OAUTH_REFRESH_TOKEN=replace-with-google-oauth-refresh-token
 
 DISCORD_BOT_TOKEN=replace-with-discord-bot-token
 DISCORD_INQUIRY_CHANNEL_ID=replace-with-discord-channel-id
+DISCORD_REVIEW_POST_INTERVAL_MS=1000
 
 GEMINI_API_KEY=replace-with-gemini-api-key
 GEMINI_MODEL=gemini-2.5-flash-lite
@@ -196,6 +197,12 @@ GOOGLE_SHEET_ID=1AbCdEfGhIjKlMnOpQrStUvWxYz
 
 - 검토 카드를 올릴 Discord 채널 ID입니다.
 - 이 채널에 봇이 메시지를 보낼 권한이 있어야 합니다.
+
+`DISCORD_REVIEW_POST_INTERVAL_MS`
+
+- Discord 검토 카드를 하나 올린 뒤 다음 카드를 올리기 전 기다릴 최소 간격입니다.
+- 기본값은 `1000`입니다.
+- Discord 429가 계속 발생하면 `1500` 또는 `2000`처럼 늘려서 전송 속도를 낮출 수 있습니다.
 
 ### Gemini
 
