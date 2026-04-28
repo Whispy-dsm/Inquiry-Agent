@@ -33,7 +33,7 @@ Whispy 고객 문의 답변 초안의 근거 문서는 [docs/rag/README.md](</C:
 
 ## Google Form Webhook Setup
 
-1. Set `WEBHOOK_PORT=3000`.
+1. Set `WEBHOOK_PORT=3000` for the container listener. Set `WEBHOOK_HOST_PORT=3001` if the host already uses port 3000.
 2. Set `WEBHOOK_SECRET` to a shared secret string.
 3. Keep `ENABLE_FALLBACK_POLLING=true` and `POLL_INTERVAL_MS=600000` so missed webhook events are recovered every 10 minutes.
 4. Deploy the worker somewhere Google Apps Script can reach. Apps Script cannot call `localhost`; use a public deployment URL or a temporary tunnel during local testing.

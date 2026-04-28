@@ -29,4 +29,9 @@
 - Rule: When using `scp-action` before a remote deploy, make the deploy step verify the expected file exists in the working directory before running Docker commands.
 - Rule: If the upload action may preserve source paths, normalize or fail with a diagnostic file listing instead of assuming the remote layout.
 - Rule: Treat deploy path secrets as untrusted input; trim accidental surrounding whitespace before `mkdir` or `cd`.
+
+## Separate host ports from container ports
+
+- Correction: Deployment reached `docker-compose up`, but failed because host port 3000 was already allocated.
+- Rule: Compose files should expose a configurable host port separately from the application listener port when deploying onto shared servers.
 - Rule: For incorrectly entered records, say the handling method requires 담당자 확인.

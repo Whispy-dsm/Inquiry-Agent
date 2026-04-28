@@ -26,7 +26,7 @@ services:
       DRY_RUN_EMAIL: ${DRY_RUN_EMAIL:-true}
 
     ports:
-      - "${WEBHOOK_PORT:-3000}:${WEBHOOK_PORT:-3000}"
+      - "${WEBHOOK_HOST_PORT:-3001}:${WEBHOOK_PORT:-3000}"
 
     restart: on-failure:1
 
