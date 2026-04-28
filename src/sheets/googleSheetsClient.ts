@@ -2,6 +2,7 @@ import { google, type sheets_v4 } from 'googleapis';
 import type { OAuth2Client } from 'google-auth-library';
 import type { Inquiry } from '../domain/inquiry.js';
 import { buildManagedColumnUpdates, getReplyEmail, mapRowToInquiry } from './sheetColumns.js';
+import { normalizeSheetName, quoteSheetName, sheetNamesMatch } from './sheetName.js';
 
 /** Google Sheet에 worker가 직접 관리하는 출력 컬럼 목록입니다. */
 const managedColumns = [
@@ -33,9 +34,23 @@ type ValueRange = {
   };
 };
 
+type SpreadsheetMetadata = {
+  data?: {
+    sheets?: Array<{
+      properties?: {
+        title?: string;
+      };
+    }>;
+  };
+};
+
 /** 테스트 주입을 쉽게 하기 위해 googleapis Sheets client의 필요한 부분만 좁힌 포트입니다. */
 type SheetsLike = {
   spreadsheets: {
+    get?(args: {
+      spreadsheetId: string;
+      fields: string;
+    }): Promise<SpreadsheetMetadata>;
     values: {
       get(args: {
         spreadsheetId: string;
@@ -68,6 +83,7 @@ type SheetsLike = {
  */
 export class GoogleSheetsClient {
   private headerCache: string[] | null = null;
+  private resolvedSheetName: string | null = null;
 
   constructor(
     private readonly sheets: SheetsLike,
@@ -142,6 +158,7 @@ export class GoogleSheetsClient {
   ): Promise<void> {
     const headers = await this.readHeaders();
     const updates = buildManagedColumnUpdates(headers, values);
+    const sheetPrefix = quoteSheetName(await this.resolveSheetName());
 
     if (!updates.length) {
       return;
@@ -152,7 +169,7 @@ export class GoogleSheetsClient {
         spreadsheetId: this.spreadsheetId,
         requestBody: {
           data: updates.map((update) => ({
-            range: `'${this.sheetName}'!${toA1Column(update.columnIndex + 1)}${rowNumber}`,
+            range: `${sheetPrefix}!${toA1Column(update.columnIndex + 1)}${rowNumber}`,
             values: [[update.value]],
           })),
           valueInputOption: 'RAW',
@@ -170,6 +187,7 @@ export class GoogleSheetsClient {
   async ensureManagedColumns(): Promise<void> {
     const headers = await this.readHeaders();
     const missing = managedColumns.filter((column) => !headers.includes(column));
+    const sheetPrefix = quoteSheetName(await this.resolveSheetName());
 
     if (missing.length === 0) {
       return;
@@ -181,7 +199,7 @@ export class GoogleSheetsClient {
     await retryOperation(async () => {
       await this.sheets.spreadsheets.values.update({
         spreadsheetId: this.spreadsheetId,
-        range: `'${this.sheetName}'!${toA1Column(startColumn)}1:${toA1Column(endColumn)}1`,
+        range: `${sheetPrefix}!${toA1Column(startColumn)}1:${toA1Column(endColumn)}1`,
         valueInputOption: 'RAW',
         requestBody: {
           values: [missing as unknown as string[]],
@@ -232,7 +250,7 @@ export class GoogleSheetsClient {
   private async readRows(): Promise<{ headers: string[]; rows: string[][] }> {
     const response = await retryOperation(async () => this.sheets.spreadsheets.values.get({
       spreadsheetId: this.spreadsheetId,
-      range: `'${this.sheetName}'`,
+      range: await this.buildRange(),
     }), requestRetryAttempts);
 
     const values = response.data?.values ?? [];
@@ -250,11 +268,49 @@ export class GoogleSheetsClient {
 
     const response = await retryOperation(async () => this.sheets.spreadsheets.values.get({
       spreadsheetId: this.spreadsheetId,
-      range: `'${this.sheetName}'!1:1`,
+      range: await this.buildRange('1:1'),
     }), headerRetryAttempts);
     const headers = (response.data?.values?.[0] ?? []).map(String);
     this.headerCache = headers;
     return headers;
+  }
+
+  private async buildRange(a1Range?: string): Promise<string> {
+    const sheetPrefix = quoteSheetName(await this.resolveSheetName());
+
+    return a1Range ? `${sheetPrefix}!${a1Range}` : sheetPrefix;
+  }
+
+  private async resolveSheetName(): Promise<string> {
+    if (this.resolvedSheetName) {
+      return this.resolvedSheetName;
+    }
+
+    if (!this.sheets.spreadsheets.get) {
+      this.resolvedSheetName = this.sheetName;
+      return this.resolvedSheetName;
+    }
+
+    const response = await retryOperation(async () => this.sheets.spreadsheets.get?.({
+      spreadsheetId: this.spreadsheetId,
+      fields: 'sheets.properties.title',
+    }), requestRetryAttempts);
+    const availableSheetNames = response?.data?.sheets
+      ?.map((sheet) => sheet.properties?.title)
+      .filter((title): title is string => typeof title === 'string') ?? [];
+    const exactMatch = availableSheetNames.find((title) => title === this.sheetName);
+    const normalizedMatch = availableSheetNames.find((title) => sheetNamesMatch(title, this.sheetName));
+
+    if (exactMatch ?? normalizedMatch) {
+      this.resolvedSheetName = exactMatch ?? normalizedMatch ?? this.sheetName;
+      return this.resolvedSheetName;
+    }
+
+    throw new Error(
+      `Google Sheet tab "${this.sheetName}" was not found. ` +
+      `Normalized value: "${normalizeSheetName(this.sheetName)}". ` +
+      `Available tabs: ${formatAvailableSheetNames(availableSheetNames)}.`,
+    );
   }
 }
 
@@ -283,6 +339,14 @@ function isRetryablePreReviewInquiry(inquiry: Inquiry, discordMessageId: string)
   }
 
   return !discordMessageId;
+}
+
+function formatAvailableSheetNames(sheetNames: string[]): string {
+  if (sheetNames.length === 0) {
+    return '(none)';
+  }
+
+  return sheetNames.map((sheetName) => `"${sheetName}"`).join(', ');
 }
 
 async function retryOperation<T>(operation: () => Promise<T>, attempts: number): Promise<T> {
