@@ -19,6 +19,7 @@ npm install -D @types/aws-lambda
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import awsLambdaFastify from 'aws-lambda-fastify';
+import { APIGatewayProxyEvent, Context } from 'aws-lambda';
 import { AppModule } from './app.module';
 
 let cachedProxy: any;
@@ -29,7 +30,7 @@ async function bootstrap() {
     new FastifyAdapter({
       logger: false,
       trustProxy: true,
-      genReqId: () => `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      genReqId: () => `req-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
     }),
   );
 
@@ -41,7 +42,7 @@ async function bootstrap() {
   });
 }
 
-export const handler = async (event, context) => {
+export const handler = async (event: APIGatewayProxyEvent, context: Context): Promise<unknown> => {
   if (!cachedProxy) {
     cachedProxy = await bootstrap();
   }

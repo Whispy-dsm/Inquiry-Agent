@@ -11,6 +11,9 @@ describe('handleReviewButton', () => {
       message: { content: 'review message' },
       reply: vi.fn(),
       update: vi.fn(),
+      deferUpdate: vi.fn(),
+      editReply: vi.fn(),
+      followUp: vi.fn(),
       showModal,
     };
     const deps = {
@@ -55,6 +58,9 @@ describe('handleReviewButton', () => {
       message: { content: 'review message' },
       reply: vi.fn(),
       update: vi.fn(),
+      deferUpdate: vi.fn(),
+      editReply: vi.fn(),
+      followUp: vi.fn(),
       showModal: vi.fn(),
     };
     const deps = {
@@ -89,7 +95,7 @@ describe('handleReviewButton', () => {
       handled_at: expect.any(String),
     });
     expect(deps.gmail.sendEmail).not.toHaveBeenCalled();
-    expect(interaction.update).toHaveBeenCalledWith({
+    expect(interaction.editReply).toHaveBeenCalledWith({
       content: expect.stringContaining('Rejected by <@discord_user_1>'),
       components: [],
     });
@@ -103,6 +109,9 @@ describe('handleReviewButton', () => {
       message: { content: 'review message' },
       reply: vi.fn(),
       update: vi.fn(),
+      deferUpdate: vi.fn(),
+      editReply: vi.fn(),
+      followUp: vi.fn(),
       showModal: vi.fn(),
     };
     const deps = {
@@ -131,6 +140,9 @@ describe('handleReviewButton', () => {
     await handleReviewButton(interaction as never, deps as never);
 
     // Assert
+    expect(interaction.deferUpdate.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY).toBeLessThan(
+      deps.sheets.findInquiryReview.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    );
     expect(deps.gmail.sendEmail).toHaveBeenCalledWith({
       fromEmail: 'support@example.com',
       fromName: 'Support Team',
@@ -149,7 +161,7 @@ describe('handleReviewButton', () => {
       final_body: '안녕하세요.',
       gmail_message_id: 'gmail_123',
     });
-    expect(interaction.update).toHaveBeenCalledWith({
+    expect(interaction.editReply).toHaveBeenCalledWith({
       content: expect.stringContaining('Sent by <@discord_user_1>'),
       components: [],
     });
@@ -163,6 +175,9 @@ describe('handleReviewButton', () => {
       message: { content: 'review message' },
       reply: vi.fn(),
       update: vi.fn(),
+      deferUpdate: vi.fn(),
+      editReply: vi.fn(),
+      followUp: vi.fn(),
       showModal: vi.fn(),
     };
     const deps = {
@@ -200,7 +215,7 @@ describe('handleReviewButton', () => {
       status: 'failed',
       error_message: 'gmail failed',
     });
-    expect(interaction.reply).toHaveBeenCalledWith({
+    expect(interaction.followUp).toHaveBeenCalledWith({
       content: '처리 중 오류가 발생했습니다. 로그를 확인해 주세요.',
       ephemeral: true,
     });
@@ -214,6 +229,9 @@ describe('handleReviewButton', () => {
       message: { content: 'review message' },
       reply: vi.fn(),
       update: vi.fn(),
+      deferUpdate: vi.fn(),
+      editReply: vi.fn(),
+      followUp: vi.fn(),
       showModal: vi.fn(),
     };
     const deps = {
@@ -243,7 +261,7 @@ describe('handleReviewButton', () => {
 
     // Assert
     expect(deps.gmail.sendEmail).not.toHaveBeenCalled();
-    expect(interaction.reply).toHaveBeenCalledWith({
+    expect(interaction.followUp).toHaveBeenCalledWith({
       content: '이미 처리 중인 문의입니다.',
       ephemeral: true,
     });
@@ -257,6 +275,9 @@ describe('handleReviewButton', () => {
       message: { content: 'review message' },
       reply: vi.fn(),
       update: vi.fn(),
+      deferUpdate: vi.fn(),
+      editReply: vi.fn(),
+      followUp: vi.fn(),
       showModal: vi.fn(),
     };
     const deps = {
@@ -293,7 +314,7 @@ describe('handleReviewButton', () => {
       status: 'failed',
       error_message: 'sheet failed',
     });
-    expect(interaction.reply).toHaveBeenCalledWith({
+    expect(interaction.followUp).toHaveBeenCalledWith({
       content: '이메일은 발송됐지만 시트 상태 업데이트에 실패했습니다. 중복 발송을 막기 위해 상태를 확인해 주세요.',
       ephemeral: true,
     });

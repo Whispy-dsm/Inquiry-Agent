@@ -76,7 +76,7 @@ import { ExpressAdapter } from '@nestjs/platform-express';
 import serverlessExpress from '@codegenie/serverless-express';
 import { Context, Handler } from 'aws-lambda';
 import express from 'express';
-import { AppModule } from './src/app.module';
+import { AppModule } from './app.module';
 
 let cachedServer: Handler;
 

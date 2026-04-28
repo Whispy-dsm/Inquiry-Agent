@@ -81,15 +81,17 @@ export async function handleReviewButton(
   }
 
   try {
+    await interaction.deferUpdate();
+
     const review = await deps.sheets.findInquiryReview(inquiryId);
 
     if (!review) {
-      await interaction.reply({ content: '문의 정보를 찾을 수 없습니다.', ephemeral: true });
+      await interaction.followUp({ content: '문의 정보를 찾을 수 없습니다.', ephemeral: true });
       return;
     }
 
     if (review.status === 'sent' || review.status === 'rejected') {
-      await interaction.reply({
+      await interaction.followUp({
         content: `이미 처리된 문의입니다. 현재 상태: ${review.status}`,
         ephemeral: true,
       });
@@ -97,7 +99,7 @@ export async function handleReviewButton(
     }
 
     if (review.status === 'sending') {
-      await interaction.reply({
+      await interaction.followUp({
         content: '이미 처리 중인 문의입니다.',
         ephemeral: true,
       });
@@ -111,7 +113,7 @@ export async function handleReviewButton(
         handled_at: new Date().toISOString(),
       });
 
-      await interaction.update({
+      await interaction.editReply({
         content: `${interaction.message.content}\n\n처리 결과: Rejected by <@${holder}>`,
         components: [],
       });
@@ -141,7 +143,7 @@ export async function handleReviewButton(
           status: 'failed',
           error_message: message,
         });
-        await interaction.reply({
+        await interaction.followUp({
           content: '처리 중 오류가 발생했습니다. 로그를 확인해 주세요.',
           ephemeral: true,
         });
@@ -157,21 +159,21 @@ export async function handleReviewButton(
           gmail_message_id: sent.messageId,
         });
       } catch {
-        await interaction.reply({
+        await interaction.followUp({
           content: '이메일은 발송됐지만 시트 상태 업데이트에 실패했습니다. 중복 발송을 막기 위해 상태를 확인해 주세요.',
           ephemeral: true,
         });
         return;
       }
 
-      await interaction.update({
+      await interaction.editReply({
         content: `${interaction.message.content}\n\n처리 결과: Sent by <@${holder}>`,
         components: [],
       });
       return;
     }
 
-    await interaction.reply({ content: '지원하지 않는 액션입니다.', ephemeral: true });
+    await interaction.followUp({ content: '지원하지 않는 액션입니다.', ephemeral: true });
   } finally {
     deps.lock.release(inquiryId, holder);
   }

@@ -64,7 +64,7 @@ import { ExpressAdapter } from '@nestjs/platform-express';
 import serverlessExpress from '@codegenie/serverless-express';
 import { Context, Handler, APIGatewayProxyEvent } from 'aws-lambda';
 import express from 'express';
-import { AppModule } from './src/app.module';
+import { AppModule } from './app.module';
 
 let cachedServer: Handler;
 
@@ -111,7 +111,7 @@ Best compatibility with existing middleware and ecosystem.
 import { NestFactory } from '@nestjs/core';
 import { ExpressAdapter } from '@nestjs/platform-express';
 import serverlessExpress from '@codegenie/serverless-express';
-import { AppModule } from './src/app.module';
+import { AppModule } from './app.module';
 
 let server: Handler;
 

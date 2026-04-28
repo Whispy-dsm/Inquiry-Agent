@@ -48,7 +48,7 @@ serverlessExpress({
 ### API Gateway v1 (REST API)
 
 ```typescript
-import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import { APIGatewayProxyEvent, APIGatewayProxyResult, Context } from 'aws-lambda';
 
 // Default format, fully featured
 const server = serverlessExpress({ app: expressApp });

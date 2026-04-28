@@ -370,3 +370,44 @@
 - Simplifications made: replaced per-variable app secret forwarding with one multiline `APP_ENV` secret written to the server `.env`; kept only CI/CD infrastructure secrets separate.
 - Verification: parsed workflow YAML with Node, confirmed deploy envs are `GITHUB_OWNER,IMAGE_NAME,GHCR_READ_TOKEN,APP_ENV`, rendered `docker compose config` with required dummy envs, ran `npm run typecheck`, and ran `npm run build`.
 - Remaining risks: repository secrets are now configured, but live deployment still depends on the server having Docker Compose available and `Dockerfile`/`docker-compose.yml` being included when merging to `main`.
+
+## CSO Security Audit
+
+- [x] Read repository conventions relevant to analysis and security review.
+- [x] Detect stack, architecture, and attack surface.
+- [x] Scan secrets, dependencies, CI/CD, infrastructure, integrations, LLM, skills, and OWASP categories.
+- [x] Filter and verify candidate findings against the daily confidence gate.
+- [x] Save the security report and summarize results.
+
+### Review
+
+Daily `/cso` audit completed on 2026-04-28. Report saved to `.gstack/security-reports/2026-04-28-102448.json`.
+
+Result: 1 verified HIGH finding in CI/CD supply chain risk. Tests and typecheck passed. Non-reportable notes: production container likely runs as root, compose healthcheck points to a missing `/health` route, no repo secret-scanning config was found, and global user skills were not scanned.
+
+## CSO Finding Remediation
+
+- [x] Pin secret-bearing third-party GitHub Actions to immutable commit SHAs.
+- [x] Verify no matching third-party action remains pinned only by mutable version tag.
+- [x] Run `npm run typecheck`.
+
+### Review
+
+Changed `.github/workflows/blank.yml` only for the reportable CSO finding. Kept short comments with the original action versions for maintenance context.
+
+## PR Review Triage
+
+- [x] Fetch PR #3 review comments and classify actionable comments vs noise.
+- [x] Accept Discord interaction deferral review and add regression coverage.
+- [x] Accept Docker healthcheck review by adding the runtime health route and coverage.
+- [x] Accept valid AWS Lambda TypeScript documentation example fixes.
+- [x] Filter skipped/no-op review comments and stale comments that no longer match the code.
+- [x] Run focused tests, typecheck, full test suite, build, and diff hygiene check.
+
+### Review
+
+Accepted: Codex Discord deferral, Codex `/health` runtime route, and Gemini documentation corrections for import paths, missing `Context` type, deprecated `substr`, and implicit handler types.
+
+Filtered: CodeRabbit skipped-review notice, non-actionable top-level summaries, and the stale raw TypeScript Lambda `parseInt` note because the file no longer contains `parseInt`.
+
+Verification: focused Discord/webhook tests, `npm run typecheck`, `npm test`, `npm run build`, and `git diff --check` passed.

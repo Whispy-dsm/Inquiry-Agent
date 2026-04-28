@@ -1,0 +1,91 @@
+{
+  "version": "2.0.0",
+  "date": "2026-04-28T10:24:48+09:00",
+  "mode": "daily",
+  "scope": "full",
+  "diff_mode": false,
+  "phases_run": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+  "architecture_summary": "Node/TypeScript worker. Google Form Apps Script calls a shared-secret webhook, Google Sheets is queue/state, Gemini drafts a response from repo-local RAG markdown, Discord receives human approval/edit actions, and Gmail sends approved replies. Main trust boundaries are public webhook input, Discord interactions, Google OAuth credentials, Gemini API key, CI/CD deploy secrets, and GitHub Actions supply chain.",
+  "attack_surface": {
+    "code": {
+      "public_endpoints": 1,
+      "authenticated": 1,
+      "admin": 0,
+      "api": 1,
+      "uploads": 0,
+      "integrations": 4,
+      "background_jobs": 2,
+      "websockets": 0
+    },
+    "infrastructure": {
+      "ci_workflows": 1,
+      "webhook_receivers": 1,
+      "container_configs": 2,
+      "iac_configs": 0,
+      "deploy_targets": 1,
+      "secret_management": "GitHub Actions secrets plus server .env generated from APP_ENV"
+    }
+  },
+  "findings": [
+    {
+      "id": 1,
+      "severity": "HIGH",
+      "confidence": 8,
+      "status": "VERIFIED",
+      "phase": 4,
+      "phase_name": "CI/CD Pipeline Security",
+      "category": "CI/CD",
+      "fingerprint": "c637da4fd6b7b4070ca15448f2bc5d5c9d692505a37ebbcf11fe763920f822f0",
+      "title": "Mutable third-party GitHub Actions run in secret-bearing deploy workflow",
+      "file": ".github/workflows/blank.yml",
+      "line": 59,
+      "commit": null,
+      "description": "The deploy workflow references third-party Actions by mutable version tags instead of immutable commit SHAs: docker/login-action@v3, docker/setup-buildx-action@v3, docker/build-push-action@v6, appleboy/ssh-action@v1.0.3, and appleboy/scp-action@v0.1.7. These steps run in a workflow with package write permission and deployment secrets.",
+      "exploit_scenario": "1. An attacker compromises an upstream action publisher account or moves a mutable action tag. 2. A normal push to main triggers this workflow. 3. The compromised action code runs in CI with GITHUB_TOKEN package write access and deploy secrets such as SERVER_SSH_KEY, GHCR_READ_TOKEN, and APP_ENV available to later deploy steps. 4. The attacker exfiltrates secrets, pushes a malicious image, or alters production deployment behavior.",
+      "impact": "Compromise of CI/CD could expose production deployment credentials, registry credentials, and application environment secrets, then allow malicious image publication or unauthorized production deployment changes.",
+      "recommendation": "Pin third-party actions to reviewed commit SHAs and periodically update them through a controlled dependency-update process. Keep first-party actions at least version-pinned; prioritize SHA pinning for all non-actions/* third-party actions used in jobs with secrets.",
+      "playbook": null,
+      "verification": "independently verified by security-reviewer subagent; self-confirmed against workflow permissions, trigger, and secret-bearing deploy steps"
+    }
+  ],
+  "supply_chain_summary": {
+    "direct_deps": 114,
+    "transitive_deps": 209,
+    "critical_cves": 0,
+    "high_cves": 0,
+    "install_scripts": 0,
+    "lockfile_present": true,
+    "lockfile_tracked": true,
+    "tools_skipped": [],
+    "npm_audit": {
+      "moderate": 4,
+      "note": "Moderate uuid advisory reaches googleapis through googleapis-common/gaxios; below daily CSO reporting threshold and fix requires googleapis semver-major upgrade."
+    }
+  },
+  "filter_stats": {
+    "candidates_scanned": 6,
+    "hard_exclusion_filtered": 2,
+    "confidence_gate_filtered": 3,
+    "verification_filtered": 0,
+    "reported": 1
+  },
+  "totals": {
+    "critical": 0,
+    "high": 1,
+    "medium": 0,
+    "tentative": 0
+  },
+  "trend": {
+    "prior_report_date": null,
+    "resolved": 0,
+    "persistent": 0,
+    "new": 1,
+    "direction": "first_run"
+  },
+  "non_reportable_notes": [
+    "Dockerfile lacks a USER directive and compose does not override user, so the production container likely runs as root. Independent verification scored this 3/10 for daily reporting because no privileged mode, cap_add, host mounts, or concrete standalone exploit path were found.",
+    "docker-compose.yml healthcheck calls /health, but the HTTP server only implements /webhooks/google-form-submit and 404 for other paths. This is an operational deployment risk, not a CSO daily security finding.",
+    "No .gitleaks.toml or .secretlintrc was found. This is a recommended control, not a daily finding.",
+    "Global user-installed AI coding skills were not scanned; repo-local .agents skills were scanned only."
+  ]
+}

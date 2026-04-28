@@ -3,6 +3,7 @@ import { createServer, type IncomingHttpHeaders, type IncomingMessage, type Serv
 import { z } from 'zod';
 
 const webhookPath = '/webhooks/google-form-submit';
+const healthPath = '/health';
 const maxBodyBytes = 32_768;
 
 const submitPayloadSchema = z.object({
@@ -65,6 +66,10 @@ export async function handleGoogleFormWebhook(
   request: GoogleFormWebhookRequest,
   deps: GoogleFormWebhookDeps,
 ): Promise<GoogleFormWebhookResponse> {
+  if (request.path === healthPath) {
+    return { body: { status: 'ok' }, statusCode: 200 };
+  }
+
   if (request.path !== webhookPath) {
     return { body: { error: 'Not found' }, statusCode: 404 };
   }

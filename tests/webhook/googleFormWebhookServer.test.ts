@@ -2,6 +2,31 @@ import { describe, expect, it, vi } from 'vitest';
 import { handleGoogleFormWebhook } from '../../src/webhook/googleFormWebhookServer.js';
 
 describe('handleGoogleFormWebhook', () => {
+  it('should report health without requiring webhook authentication', async () => {
+    // Arrange
+    const processSubmittedRow = vi.fn().mockResolvedValue(true);
+
+    // Act
+    const result = await handleGoogleFormWebhook({
+      method: 'GET',
+      path: '/health',
+      secret: '',
+      body: '',
+    }, {
+      expectedSecret: 'shared-secret',
+      expectedSheetName: '?ㅻЦ吏 ?묐떟 ?쒗듃1',
+      expectedSpreadsheetId: 'sheet-id',
+      workflow: { processSubmittedRow },
+    });
+
+    // Assert
+    expect(result).toEqual({
+      body: { status: 'ok' },
+      statusCode: 200,
+    });
+    expect(processSubmittedRow).not.toHaveBeenCalled();
+  });
+
   it('should process the submitted row when the webhook is valid', async () => {
     // Arrange
     const processSubmittedRow = vi.fn().mockResolvedValue(true);
