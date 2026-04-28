@@ -1,4 +1,5 @@
 .omx/
+.gstack/security-reports/
 node_modules/
 dist/
 coverage/
