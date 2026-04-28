@@ -455,3 +455,19 @@ Verification: focused Discord/webhook tests, `npm run typecheck`, `npm test`, `n
 - Simplifications made: added cleanup inside the existing deploy SSH script instead of changing the Swarm topology or replica count.
 - Verification: parsed the workflow YAML with Node's `yaml` package, asserted the deploy script contains the service-scoped cleanup function and prune command, and ran `git diff --check`.
 - Remaining risks: local bash syntax validation could not run in this Windows/WSL shell setup; live behavior still depends on the server's Swarm service name being `inquiry-agent_inquiry-agent`, which matches `docker stack deploy ... inquiry-agent` plus the `inquiry-agent` service key.
+
+## Google Sheet Tab Resolution
+
+### Plan
+
+- [x] Resolve the real sheet tab title from spreadsheet metadata before building A1 ranges.
+- [x] Normalize sheet-name comparisons for webhook payload validation.
+- [x] Add regression tests for hidden whitespace/name drift and missing tab diagnostics.
+- [x] Run focused Sheets/webhook tests, typecheck, full tests, and build.
+
+### Review
+
+- Changed files: `src/sheets/sheetName.ts`, `src/sheets/googleSheetsClient.ts`, `src/webhook/googleFormWebhookServer.ts`, `tests/sheets/googleSheetsClient.test.ts`, `tests/webhook/googleFormWebhookServer.test.ts`, `tasks/todo.md`
+- Simplifications made: kept `GOOGLE_SHEET_NAME` as the operator-facing setting, but now resolves the actual tab title from Sheets metadata before building A1 ranges and reports available tabs when no match exists.
+- Verification: focused Sheets/webhook tests, `npm run typecheck`, full `npm test`, `npm run build`, and `git diff --check` passed.
+- Remaining risks: this still needs live deployment before the EC2 container will use the metadata-based tab resolution.
