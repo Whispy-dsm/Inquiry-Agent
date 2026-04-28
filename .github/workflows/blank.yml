@@ -88,28 +88,37 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Encode docker compose file
+        id: compose
+        run: |
+          {
+            echo 'compose_b64<<EOF'
+            base64 -w 0 docker-compose.yml
+            echo
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
       - name: Prepare server directory
         # appleboy/ssh-action@v1.0.3
         uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262
+        env:
+          SERVER_APP_DIR: ${{ secrets.SERVER_APP_DIR }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: ${{ secrets.SERVER_PORT }}
+          envs: SERVER_APP_DIR
           script: |
             set -e
-            mkdir -p "${{ secrets.SERVER_APP_DIR }}"
 
-      - name: Upload docker compose file
-        # appleboy/scp-action@v0.1.7
-        uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          port: ${{ secrets.SERVER_PORT }}
-          source: "docker-compose.yml"
-          target: "${{ secrets.SERVER_APP_DIR }}"
+            APP_DIR="$(printf '%s' "${SERVER_APP_DIR}" | xargs)"
+            if [ -z "${APP_DIR}" ]; then
+              echo "SERVER_APP_DIR is empty after trimming whitespace" >&2
+              exit 1
+            fi
+
+            mkdir -p "${APP_DIR}"
 
       - name: Deploy to server
         # appleboy/ssh-action@v1.0.3
@@ -119,28 +128,30 @@ jobs:
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
           GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
           APP_ENV: ${{ secrets.APP_ENV }}
+          SERVER_APP_DIR: ${{ secrets.SERVER_APP_DIR }}
+          COMPOSE_FILE_B64: ${{ steps.compose.outputs.compose_b64 }}
 
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: ${{ secrets.SERVER_PORT }}
-          envs: GITHUB_OWNER,IMAGE_NAME,GHCR_READ_TOKEN,APP_ENV
+          envs: GITHUB_OWNER,IMAGE_NAME,GHCR_READ_TOKEN,APP_ENV,SERVER_APP_DIR,COMPOSE_FILE_B64
           script: |
             set -e
 
-            cd "${{ secrets.SERVER_APP_DIR }}"
-
-            if [ ! -f docker-compose.yml ]; then
-              COMPOSE_FILE="$(find . -maxdepth 3 -type f \( -name 'docker-compose.yml' -o -name 'docker-compose.yaml' -o -name 'compose.yml' -o -name 'compose.yaml' \) | head -n 1)"
-              if [ -n "${COMPOSE_FILE}" ]; then
-                cp "${COMPOSE_FILE}" ./docker-compose.yml
-              fi
+            APP_DIR="$(printf '%s' "${SERVER_APP_DIR}" | xargs)"
+            if [ -z "${APP_DIR}" ]; then
+              echo "SERVER_APP_DIR is empty after trimming whitespace" >&2
+              exit 1
             fi
 
-            if [ ! -f docker-compose.yml ]; then
-              find . -maxdepth 3 -type f -print
-              echo "docker-compose.yml was not uploaded into $PWD" >&2
+            mkdir -p "${APP_DIR}"
+            cd "${APP_DIR}"
+
+            printf '%s' "${COMPOSE_FILE_B64}" | base64 -d > docker-compose.yml
+            if [ ! -s docker-compose.yml ]; then
+              echo "docker-compose.yml was not written into $PWD" >&2
               exit 1
             fi
 

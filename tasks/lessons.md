@@ -28,4 +28,5 @@
 - Correction: The deploy job reached the server but `docker-compose` could not find `docker-compose.yml` in `SERVER_APP_DIR`.
 - Rule: When using `scp-action` before a remote deploy, make the deploy step verify the expected file exists in the working directory before running Docker commands.
 - Rule: If the upload action may preserve source paths, normalize or fail with a diagnostic file listing instead of assuming the remote layout.
+- Rule: Treat deploy path secrets as untrusted input; trim accidental surrounding whitespace before `mkdir` or `cd`.
 - Rule: For incorrectly entered records, say the handling method requires 담당자 확인.
