@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "skills": {
+    "aws-lambda-typescript-integration": {
+      "source": "giuseppe-trisciuoglio/developer-kit",
+      "sourceType": "github",
+      "computedHash": "d0e90b760a1a84f9116d5c525ec5025a789209cf4f7610a35497bb3922f60efa"
+    },
+    "enforcing-typescript-standards": {
+      "source": "jgeurts/eslint-config-decent",
+      "sourceType": "github",
+      "computedHash": "1713616faf98ccfb510d82bb7009dfbef07574c27dd95efc0ec3f5b081078809"
+    },
+    "jsdoc-tsdoc": {
+      "source": "claude-dev-suite/claude-dev-suite",
+      "sourceType": "github",
+      "computedHash": "4a9e9dd30e61086465a43830a0c30844afff605d80eb52980e2c7c133dfc7276"
+    },
+    "nodejs-backend-typescript": {
+      "source": "bobmatnyc/claude-mpm-skills",
+      "sourceType": "github",
+      "computedHash": "57b14553188b1448564a79c193074f01abc34b196390d305be7735ef3c3e2107"
+    },
+    "openrouter-typescript-sdk": {
+      "source": "openrouterteam/agent-skills",
+      "sourceType": "github",
+      "computedHash": "d6effb9c0f5f5361ed95976936845fd3c9e8eeef53f9214aa2e82845c708fd3f"
+    },
+    "typescript-async-patterns": {
+      "source": "thebushidocollective/han",
+      "sourceType": "github",
+      "computedHash": "bd74ad509718e02fa1ba1333e615d53fbfab7712623e0b6123102fb36ac322c2"
+    },
+    "typescript-best-practices": {
+      "source": "0xbigboss/claude-code",
+      "sourceType": "github",
+      "computedHash": "b73b69197553b711e02839015e6abca717eb2305e90de3cc86403c92d92b00d9"
+    },
+    "typescript-clean-code": {
+      "source": "bmad-labs/skills",
+      "sourceType": "github",
+      "computedHash": "422961f924c79b3466000347fa9a3b824a05e869c1456b0800219a4929f026df"
+    },
+    "typescript-mcp-server-generator": {
+      "source": "github/awesome-copilot",
+      "sourceType": "github",
+      "computedHash": "d7add3c0bf0b16006283fcb77748eb7025d574c5e2d15306d767fb901d47ad37"
+    },
+    "typescript-security-review": {
+      "source": "giuseppe-trisciuoglio/developer-kit",
+      "sourceType": "github",
+      "computedHash": "017d8d9c03cad4eb1c5548def8c927ff5f4e1ae0d9fda8245eb325ac7ff231dd"
+    },
+    "typescript-unit-testing": {
+      "source": "bmad-labs/skills",
+      "sourceType": "github",
+      "computedHash": "eb04d32803de05e351393ffe97bd655c154c310f16bb275203a80dee2b8ae83e"
+    }
+  }
+}
