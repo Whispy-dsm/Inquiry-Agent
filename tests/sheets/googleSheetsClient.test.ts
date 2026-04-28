@@ -105,6 +105,74 @@ describe('GoogleSheetsClient', () => {
     });
   });
 
+  it('should resolve the actual sheet title from spreadsheet metadata', async () => {
+    // Arrange
+    const update = vi.fn().mockResolvedValue({});
+    const fakeSheets = {
+      spreadsheets: {
+        get: vi.fn().mockResolvedValue({
+          data: {
+            sheets: [
+              { properties: { title: 'Other tab' } },
+              { properties: { title: 'Whispy에게 문의하기(응답)' } },
+            ],
+          },
+        }),
+        values: {
+          get: vi.fn().mockResolvedValue({
+            data: {
+              values: [whispyHeaders],
+            },
+          }),
+          batchUpdate: vi.fn().mockResolvedValue({}),
+          update,
+        },
+      },
+    };
+
+    const target = new GoogleSheetsClient(fakeSheets as never, 'sheet-id', ' Whispy에게   문의하기(응답)\u200B ');
+
+    // Act
+    await target.ensureManagedColumns();
+
+    // Assert
+    expect(fakeSheets.spreadsheets.get).toHaveBeenCalledWith({
+      spreadsheetId: 'sheet-id',
+      fields: 'sheets.properties.title',
+    });
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      range: "'Whispy에게 문의하기(응답)'!P1:AC1",
+    }));
+  });
+
+  it('should report available sheet titles when the configured tab is missing', async () => {
+    // Arrange
+    const fakeSheets = {
+      spreadsheets: {
+        get: vi.fn().mockResolvedValue({
+          data: {
+            sheets: [
+              { properties: { title: 'Responses' } },
+              { properties: { title: 'Archive' } },
+            ],
+          },
+        }),
+        values: {
+          get: vi.fn(),
+          batchUpdate: vi.fn(),
+          update: vi.fn(),
+        },
+      },
+    };
+
+    const target = new GoogleSheetsClient(fakeSheets as never, 'sheet-id', 'Whispy에게 문의하기(응답)');
+
+    // Act / Assert
+    await expect(target.ensureManagedColumns()).rejects.toThrow(
+      'Available tabs: "Responses", "Archive".',
+    );
+  });
+
   it('should find review metadata using the Whispy reply email column', async () => {
     // Arrange
     const fakeSheets = {
