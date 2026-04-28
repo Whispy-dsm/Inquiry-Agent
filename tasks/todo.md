@@ -212,4 +212,161 @@
 - Verification: `npm run test`, `npm run typecheck`, `npm run build`
 - Remaining risks: cross-process duplicate handling is still not solved if multiple app instances write to the same sheet concurrently.
 
+## OMX Team Runtime Hardening
 
+### Plan
+
+- [x] Fix Windows team worker CLI interop so worker ACK/claim/completion no longer fail on `spawnSync('omx')`.
+- [x] Make `omx team` honor `~/.codex/config.toml` `[env]` overrides for worker launch args.
+- [x] Fix team shutdown cleanup so worker panes are fully gone before shutdown returns.
+- [x] Re-run Windows team smoke verification for startup model, task completion, and shutdown cleanup.
+
+### Review
+
+- Changed repo files: `tasks/todo.md`, `tasks/lessons.md`
+- Changed runtime files outside the repo:
+  - `C:\Users\user\AppData\Roaming\npm\node_modules\oh-my-codex\dist\team\tmux-session.js`
+  - `C:\Users\user\AppData\Roaming\npm\node_modules\oh-my-codex\dist\team\worker-bootstrap.js`
+  - `C:\Users\user\AppData\Roaming\npm\node_modules\oh-my-codex\skills\worker\SKILL.md`
+  - `C:\Users\user\AppData\Roaming\npm\node_modules\oh-my-codex\dist\cli\team.js`
+  - `C:\Users\user\AppData\Roaming\npm\node_modules\oh-my-codex\dist\config\models.js`
+  - `C:\Users\user\.codex\config.toml`
+- Simplifications made:
+  - kept the fix at the OMX runtime layer instead of changing any project code
+  - preserved the user's configured `gpt-5.5` model while fixing worker launch-arg propagation
+  - treated the restored standalone HUD pane as expected shared-session behavior and verified worker-pane cleanup separately
+- Verification:
+  - Windows team smoke runs `v7` through `v12` confirmed worker `ACK -> claim -> completed`
+  - startup model resolution confirmed `gpt-5.5` after config/env propagation fix
+  - sequential post-shutdown verification on `v12` confirmed:
+    - `omx team status ...` -> `status: missing`
+    - `.omx/state/team/<team>` removed
+    - worker pane gone; only restored standalone HUD pane remains in the shared leader session
+- Remaining risks:
+  - these runtime fixes live in the global `oh-my-codex` install and can be overwritten by a future global reinstall or update
+
+## OMX Team 2 PRD Review
+
+### Plan
+
+- [x] Launch a clean 2-worker OMX team smoke in the temporary clean repo.
+- [x] Verify both workers send ACK and receive distinct tasks.
+- [x] Verify both workers claim and complete their assigned tasks.
+- [x] Verify leader mailbox/state evidence is coherent for 2 workers.
+- [x] Verify shutdown removes canonical team state and worker panes in the 2-worker case.
+- [x] Summarize PRD-level verdict with pass/flag findings.
+
+### Review
+
+- Smoke repo: `C:\Users\user\Desktop\omx-team-smoke`
+- Team tested: `1-perform-no-edit-smoke-task-a`
+- What passed:
+  - 2 workers launched and both sent startup ACK to `leader-fixed`
+  - canonical team state and task files were created correctly
+  - team reached terminal completion and shutdown cleanup removed canonical team state
+  - worker panes were removed after shutdown; only standalone HUD pane remained in the shared session
+- PRD blocker found:
+  - task allocation was not truly parallel for 2 workers
+  - both generated tasks were assigned to `worker-1`
+  - `worker-2` launched, ACKed, then stayed idle with no assigned tasks and reported claim conflict
+  - team still completed only because `worker-1` processed task 1 and task 2 sequentially
+- Additional PRD blocker found:
+  - a follow-up 2-worker launch in the same shared tmux session failed at startup with `HUD pane did not remain present after tmux split-window returned %21`
+  - the previous standalone HUD pane in the shared session appears to leave launch hygiene fragile for repeated multi-worker runs
+- Evidence:
+  - `config.json` / `manifest.v2.json` showed `worker-1 assigned_tasks: ["1","2"]`, `worker-2 assigned_tasks: []`
+  - `task-1.json` and `task-2.json` both had `owner: "worker-1"`
+  - `leader-fixed.json` recorded `worker-2` progress messages explicitly saying it had no assigned tasks and no claim-safe work
+  - second 2-worker smoke aborted before task state creation with `HUD pane did not remain present ...`
+- Root-cause hypothesis:
+  - `dist/team/allocation-policy.js` scores overlap strongly enough that similar tasks collapse onto the first worker instead of balancing to the second worker
+  - `dist/team/tmux-session.js` identifies/cleans existing HUD panes only when `startCommand` matches `omx ... hud --watch`, which is likely too weak for restored standalone HUD panes in Windows shared-session runs
+- PRD verdict:
+  - `$team 2` is not yet PRD-acceptable
+  - lifecycle plumbing works, but parallel task distribution and repeated multi-worker launch hygiene are not reliable enough for operator trust
+
+## OMX Team 2 Retest
+
+### Plan
+
+- [x] Re-run `$team 2` after confirming no standalone HUD pane remains.
+- [x] Verify whether the previous HUD startup failure reproduces.
+- [x] Verify whether task distribution still collapses onto one worker.
+- [x] Summarize whether the retest changes the PRD-level verdict.
+
+### Review
+
+- Retest team: `1-inspect-repository-layout-an`
+- Result:
+  - startup succeeded with 2 workers and 2 ACKs
+  - previous HUD-startup failure did not reproduce once the standalone HUD pane was removed first
+  - task distribution still collapsed onto `worker-1`
+  - `worker-2` reported idle / no assigned task / claim conflict
+  - `worker-1` completed both task 1 and task 2 sequentially
+  - shutdown cleanup again removed canonical team state and worker panes; standalone HUD remained
+- Updated PRD verdict:
+  - cleanup reliability is acceptable once launch has succeeded
+  - startup fragility is at least partly tied to leftover standalone HUD pane state between runs
+  - the core PRD blocker remains unchanged: `$team 2` does not reliably provide real parallel execution because allocation can starve one worker completely
+
+## OMX Team 2 Distinct-Task Retest
+
+### Plan
+
+- [x] Remove leftover standalone HUD pane before retest.
+- [x] Re-run `omx team 2` with intentionally distinct tasks and without forcing a single worker role.
+- [x] Verify whether each worker gets exactly one task.
+- [x] Verify both workers complete independently and shutdown cleanup still works.
+
+### Review
+
+- Retest team: `1-capture-the-heading-and-purp`
+- Distinct tasks used:
+  - task 1: capture README heading/purpose
+  - task 2: enumerate git branches/tags
+- Result:
+  - `worker-1` received task 1
+  - `worker-2` received task 2
+  - both workers sent ACK
+  - both workers completed their own tasks independently
+  - shutdown cleanup again removed canonical team state and worker panes; standalone HUD remained
+- Updated interpretation:
+  - `$team 2` can achieve real parallelism when tasks are sufficiently distinct
+  - the earlier collapse onto one worker was not a universal 2-worker failure, but it is still a meaningful product risk because similar tasks can collapse to one lane
+
+## Whispy RAG Markdown Knowledge Pack
+
+### Plan
+
+- [x] Inspect Whispy Flutter project at `C:\Users\user\Desktop\Whispy_Flutter`.
+- [x] Inspect Whispy backend project at `C:\Users\user\Desktop\Whispy_BE`.
+- [x] Search and fetch relevant Whispy Notion documents.
+- [x] Create multiple Markdown knowledge files under `docs/rag/` for AI answer generation.
+- [x] Include source-map, answer policy, retrieval/chunking guidance, and domain knowledge.
+- [x] Wire the worker to load `docs/rag` Markdown as runtime context.
+- [x] Verify Markdown files exist and are internally consistent.
+
+### Review
+
+- Changed files: `docs/rag/README.md`, `docs/rag/source-map.md`, `docs/rag/answer-policy.md`, `docs/rag/product-knowledge.md`, `docs/rag/feature-api-map.md`, `docs/rag/inquiry-playbooks.md`, `docs/rag/retrieval-guide.md`, `docs/runbook.md`, `src/ai/contextProvider.ts`, `src/worker.ts`, `tests/ai/contextProvider.test.ts`, `tasks/todo.md`, `tasks/lessons.md`
+- Simplifications made: used Markdown section search over local files instead of adding a vector DB or embedding dependency; kept customer-facing knowledge separate from internal API maps.
+- Verification: `npm run test -- tests/ai/contextProvider.test.ts`, `npm run test`, `npm run typecheck`, `npm run build`, and `Get-ChildItem docs/rag` passed.
+- Remaining risks: retrieval is keyword-based, not semantic embeddings; answer quality should be monitored with real 문의 samples before removing Discord review.
+
+
+
+## GitHub Actions Runtime Env Alignment
+
+### Plan
+
+- [x] Align `docker-compose.yml` environment variable names with `src/config/env.ts`.
+- [x] Pass required runtime secrets through the deploy SSH action.
+- [x] Fix Discord webhook notification gating without using `secrets` directly in `if`.
+- [x] Validate YAML/compose syntax and run the closest build verification.
+
+### Review
+
+- Changed files: `.github/workflows/blank.yml`, `docker-compose.yml`, `tasks/todo.md`
+- Simplifications made: replaced per-variable app secret forwarding with one multiline `APP_ENV` secret written to the server `.env`; kept only CI/CD infrastructure secrets separate.
+- Verification: parsed workflow YAML with Node, confirmed deploy envs are `GITHUB_OWNER,IMAGE_NAME,GHCR_READ_TOKEN,APP_ENV`, rendered `docker compose config` with required dummy envs, ran `npm run typecheck`, and ran `npm run build`.
+- Remaining risks: repository secrets are now configured, but live deployment still depends on the server having Docker Compose available and `Dockerfile`/`docker-compose.yml` being included when merging to `main`.
