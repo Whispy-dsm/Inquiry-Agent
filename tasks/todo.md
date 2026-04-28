@@ -411,3 +411,32 @@ Accepted: Codex Discord deferral, Codex `/health` runtime route, and Gemini docu
 Filtered: CodeRabbit skipped-review notice, non-actionable top-level summaries, and the stale raw TypeScript Lambda `parseInt` note because the file no longer contains `parseInt`.
 
 Verification: focused Discord/webhook tests, `npm run typecheck`, `npm test`, `npm run build`, and `git diff --check` passed.
+
+## Docker Runtime Entrypoint Fix
+
+### Plan
+
+- [x] Confirm why the container cannot find `/app/dist/index.js`.
+- [x] Align the TypeScript production build output with the configured Node/Docker entrypoint.
+- [x] Verify build output includes `dist/index.js`.
+- [x] Run typecheck, tests, build, and available runtime checks.
+- [x] Attempt Docker image build and record the local Docker daemon blocker.
+
+### Review
+
+- Changed files: `package.json`, `tsconfig.build.json`, `tasks/todo.md`
+- Simplifications made: kept the existing Docker/package runtime command (`node dist/index.js`) and changed only the production build output to match it; production build now excludes tests.
+- Verification: `npm run typecheck`, `npm test`, `npm run build`, clean rebuild output check for `dist/index.js`, `npm start` reached env validation instead of module resolution, and `git diff --check` passed.
+- Remaining risks: local Docker image build could not run because the Docker daemon was unavailable in this environment; `npm run lint` is still blocked by the repository's missing ESLint v9 `eslint.config.*` file.
+
+### Stop-Hook Verification Refresh
+
+- Fresh verification: `npm run typecheck`, `npm run build`, `npm test`, `Test-Path dist/index.js`, direct `node dist/index.js` with missing required envs, and `git diff --check`.
+- Result: build emits `dist/index.js`; direct Node startup reaches `loadEnv()` in `dist/worker.js` instead of failing with `MODULE_NOT_FOUND`; 17 test files / 49 tests pass.
+- OMX cleanup: cleared stale legacy `.omx/state/ultrawork-state.json`; `omx state list-active --json` no longer reports `ultrawork`.
+
+### Mode-State Continuation
+
+- Continued from injected OMX tmux state and inspected active mode markers.
+- Terminalized stale legacy `ralph`, `team`, and `skill-active` markers that were already cancelled/completed or unrelated to the Docker entrypoint task.
+- Verification: `omx state list-active --json` now returns no active modes.
