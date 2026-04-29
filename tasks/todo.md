@@ -823,8 +823,8 @@ Verification: focused Discord/webhook tests, `npm run typecheck`, `npm test`, `n
 
 ### Plan
 
-- [x] Rebase the feature branch directly onto `origin/main` so #9 history is no longer part of the PR.
-- [x] Remove completion-checkbox/fallback-polling drift left over from the previous branch scope.
+- [x] Rebase the feature branch directly onto `origin/main`.
+- [x] Re-include #9 completion-checkbox/fallback-polling guard changes in #10 after the latest scope update.
 - [x] Harden final draft prompting so retrieved internal evidence is explicitly treated as untrusted quoted data.
 - [x] Prevent `ENABLE_KNOWLEDGE_CIRCUIT=true` from initializing SQLite when the internal evidence router is disabled.
 - [x] Stabilize GitHub AST evidence coverage around the runtime TypeScript compiler import timeout.
@@ -833,10 +833,42 @@ Verification: focused Discord/webhook tests, `npm run typecheck`, `npm test`, `n
 
 ### Review
 
-- Rebased `feature/10-sqlite-knowledge-circuit` onto `origin/main`; `origin/main..HEAD` now contains only #10 commits.
+- Rebased `feature/10-sqlite-knowledge-circuit` onto `origin/main`, then included #9 completion-checkbox/fallback-polling guard commits in the same PR per the latest request.
 - Added an explicit untrusted-data boundary to the final Gemini draft system prompt and internal evidence prompt section.
 - Changed worker wiring so the SQLite knowledge circuit is created only when `ENABLE_INTERNAL_EVIDENCE_ROUTER=true`.
 - Cached the TypeScript compiler import and gave the AST regression test enough time for the production 10s fallback path.
-- Restored fallback polling docs/templates to the application default instead of carrying the prior completion-checkbox branch drift.
+- Re-applied completed-row filtering, completion checkbox writes after successful send, and fallback polling default guidance.
 - Verification: focused review tests, full `npm run test` (18 files / 93 tests), `npm run typecheck`, `npm run build`, Docker Compose/Stack config rendering, and `git diff --check` passed.
 - Remaining risks: `npm run lint` is still blocked by the repository's existing missing ESLint v9 `eslint.config.*` file; `node:sqlite` still emits Node's experimental warning in tests.
+
+## Sent Email Completion Checkbox
+
+### Plan
+
+- [x] Add regression coverage that approve and edited-send mark the form `완료 여부` checkbox as checked after Gmail succeeds.
+- [x] Update the sent-email Sheet writes to set the existing `완료 여부` column to `TRUE`.
+- [x] Verify focused Discord/Sheets tests, typecheck, build, and diff hygiene.
+
+### Review
+
+- Changed files: `src/discord/interactionHandlers.ts`, `tests/discord/interactionHandlers.test.ts`, `tests/sheets/googleSheetsClient.test.ts`, `tasks/todo.md`
+- Simplifications made: reused the existing Sheet update call instead of adding a new API or managed column; the existing `완료 여부` column is updated only when Gmail send has already succeeded.
+- Verification: focused Discord/Sheets tests, full `npm test`, `npm run typecheck`, `npm run build`, and `git diff --check` passed in the original #9 branch; this branch will be reverified after #9/#10 integration.
+- Remaining risks: `npm run lint` is still blocked by the repository's existing missing ESLint v9 `eslint.config.*` file.
+
+## Gemini Call Storm Guard
+
+### Plan
+
+- [x] Add regression coverage for skipping `완료 여부=TRUE` rows before Gemini draft generation.
+- [x] Make fallback polling opt-in by default across env parsing and docs.
+- [x] Update docs and runtime setting so webhook-only processing is the default path.
+- [x] Run focused tests, full tests, typecheck, build, lint attempt, and diff hygiene.
+
+### Review
+
+- Changed files: `src/sheets/sheetColumns.ts`, `src/sheets/googleSheetsClient.ts`, `src/config/env.ts`, `docs/runbook.md`, `docs/운영-플로우-및-env-설정-가이드.md`, `tests/sheets/googleSheetsClient.test.ts`, `tests/config/env.test.ts`, `tasks/todo.md`.
+- Root cause: fallback polling was enabled by default and immediately scanned the full Sheet, while blank `status` rows were treated as new even when `완료 여부` was already `TRUE`.
+- Simplifications made: filtered completed rows at the Sheets adapter boundary and changed fallback polling defaults instead of adding rate-limit state or a new database.
+- Verification: focused config/Sheets tests, full `npm test`, `npm run typecheck`, `npm run build`, and `git diff --check` passed in the original #9 branch; this branch will be reverified after #9/#10 integration.
+- Remaining risks: `npm run lint` is still blocked by the repository's existing missing ESLint v9 `eslint.config.*` file; deployed environments that explicitly set `ENABLE_FALLBACK_POLLING=true` still need their secret/env value changed separately.

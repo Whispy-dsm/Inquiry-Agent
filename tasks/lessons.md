@@ -34,11 +34,23 @@
 
 - Correction: Deployment reached `docker-compose up`, but failed because host port 3000 was already allocated.
 - Rule: Compose files should expose a configurable host port separately from the application listener port when deploying onto shared servers.
+- Rule: When converting a compose deployment to Swarm, use an explicit stack network name instead of the default network if a legacy compose network may already exist.
+
+## Match issue and PR scope to the user's active work
+
+- Correction: I created an issue and PR for the review-side security report finding when the user expected the current Discord 429 implementation work.
+- Rule: Before creating an issue or PR, restate the exact work scope from the user's latest request and align title, body, branch, labels, and commits to that scope.
+- Correction: I created a repo-name label when the user wanted this repository's label set to match the existing `Whispy_BE` repository labels.
+- Rule: When the user says to label work like another repository, inspect and mirror that repository's actual labels instead of inventing a new repo-name label.
 
 ## Check project git convention before committing
 
 - Correction: A commit was created with a Lore-style subject but without the repository's required `<type> : <description>` subject format.
 - Rule: Before committing in this repository, read `docs/conventions/agent/git.md` and use subjects such as `ci : ...`, while keeping Lore trailers in the commit body.
+- Correction: I merged a PR without immediately creating and pushing the required semantic version tag.
+- Rule: After merging an issue or PR scope in this repository, create the next `v{MAJOR}.{MINOR}.{PATCH}` tag on the merge commit, push it to origin, and verify the remote tag exists before reporting completion.
+- Correction: I committed behavior changes, docs, repository hygiene, and task memory together in one broad commit.
+- Rule: Before committing, inspect the staged diff and split commits by reviewable concern: behavior with tests, operator docs, repository hygiene, and agent memory/task logs should be separate commits unless they are inseparable.
 - Rule: For incorrectly entered records, say the handling method requires 담당자 확인.
 
 ## Keep the decision gate broader than the first validation slice
