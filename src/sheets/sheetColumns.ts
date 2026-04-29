@@ -6,6 +6,7 @@ const replyEmailHeaders = ['답변 받으실 이메일 주소를 입력해주세
 const nameHeaders = ['이름'] as const;
 const inquiryIdHeaders = ['inquiry_id'] as const;
 const statusHeaders = ['status'] as const;
+const completionHeaders = ['완료 여부'] as const;
 const legacyMessageHeaders = ['문의 내용'] as const;
 
 /** Google Form의 한국어 문의 유형 라벨을 내부 enum 값으로 변환합니다. */
@@ -77,6 +78,13 @@ function getInquiryMessage(headers: string[], row: string[], type: InquiryType):
 
 export function getReplyEmail(headers: string[], row: string[]): string {
   return getCellValue(headers, row, replyEmailHeaders);
+}
+
+/** Google Form의 완료 체크박스가 체크된 row인지 확인합니다. */
+export function isCompletionChecked(headers: string[], row: string[]): boolean {
+  const value = getCellValue(headers, row, completionHeaders).toLowerCase();
+
+  return value === 'true' || value === '1' || value === 'yes' || value === 'on';
 }
 
 /** Google Sheet의 header/row 배열을 내부 Inquiry 모델로 변환합니다. */

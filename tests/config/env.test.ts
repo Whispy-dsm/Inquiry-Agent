@@ -84,5 +84,6 @@ describe('loadEnv', () => {
 
     // Assert
     expect(result.DISCORD_REVIEW_POST_INTERVAL_MS).toBe(1000);
+    expect(result.ENABLE_FALLBACK_POLLING).toBe(false);
   });
 });
