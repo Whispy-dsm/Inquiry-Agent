@@ -157,6 +157,7 @@ describe('handleReviewButton', () => {
     });
     expect(deps.sheets.updateManagedFields).toHaveBeenNthCalledWith(2, 2, {
       status: 'sent',
+      '완료 여부': 'TRUE',
       final_subject: '문의 답변드립니다',
       final_body: '안녕하세요.',
       gmail_message_id: 'gmail_123',
@@ -458,6 +459,7 @@ describe('handleEditSubmitSend', () => {
     });
     expect(deps.sheets.updateManagedFields).toHaveBeenNthCalledWith(2, 2, {
       status: 'sent',
+      '완료 여부': 'TRUE',
       final_subject: '수정 제목',
       final_body: '수정 본문',
       gmail_message_id: 'gmail_123',

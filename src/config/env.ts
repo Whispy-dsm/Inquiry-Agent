@@ -63,7 +63,7 @@ const envSchema = z.object({
   GMAIL_FROM_EMAIL: z.string().email(),
   GMAIL_FROM_NAME: z.string().min(1).default('Support Team'),
   POLL_INTERVAL_MS: z.coerce.number().int().positive().default(600000),
-  ENABLE_FALLBACK_POLLING: booleanStringSchema.default(true),
+  ENABLE_FALLBACK_POLLING: booleanStringSchema.default(false),
   WEBHOOK_PORT: z.coerce.number().int().positive().default(3000),
   WEBHOOK_SECRET: z.string().min(1),
   DRY_RUN_EMAIL: booleanStringSchema.default(true),

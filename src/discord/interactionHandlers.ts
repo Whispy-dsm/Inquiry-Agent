@@ -160,6 +160,7 @@ export async function handleReviewButton(
       try {
         await deps.sheets.updateManagedFields(review.rowNumber, {
           status: 'sent',
+          '완료 여부': 'TRUE',
           final_subject: review.draftSubject,
           final_body: review.draftBody,
           gmail_message_id: sent.messageId,
@@ -284,6 +285,7 @@ export async function handleEditSubmitSend(
     try {
       await deps.sheets.updateManagedFields(review.rowNumber, {
         status: 'sent',
+        '완료 여부': 'TRUE',
         final_subject: edit.subject,
         final_body: edit.body,
         gmail_message_id: sent.messageId,

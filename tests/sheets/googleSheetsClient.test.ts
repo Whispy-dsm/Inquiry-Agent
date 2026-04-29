@@ -29,7 +29,8 @@ describe('GoogleSheetsClient', () => {
             data: {
               values: [
                 [...whispyHeaders, 'status', 'inquiry_id'],
-                ['2026-04-23', '그 외 문의하고 싶은 내용이 있어요', '', '', '', '', '', '', '질문', '', '동의', 'a@example.com', '', '', 'TRUE', '', ''],
+                ['2026-04-23', '그 외 문의하고 싶은 내용이 있어요', '', '', '', '', '', '', '질문', '', '동의', 'a@example.com', '', '', 'FALSE', '', ''],
+                ['2026-04-23', '그 외 문의하고 싶은 내용이 있어요', '', '', '', '', '', '', '이미 처리된 질문', '', '동의', 'done@example.com', '', '', 'TRUE', '', ''],
                 ['2026-04-23', '건의사항이 있어요', '', '', '', '', '건의', '', '', '', '동의', 'b@example.com', '', '', 'TRUE', 'sent', 'inq_3'],
               ],
             },
@@ -216,7 +217,7 @@ describe('GoogleSheetsClient', () => {
             data: {
               values: [
                 [...whispyHeaders, 'status', 'inquiry_id'],
-                ['2026-04-23', '그 외 문의하고 싶은 내용이 있어요', '', '', '', '', '', '', '질문', '', '동의', 'reply@example.com', '', '', 'TRUE', '', 'inq_2'],
+                ['2026-04-23', '그 외 문의하고 싶은 내용이 있어요', '', '', '', '', '', '', '질문', '', '동의', 'reply@example.com', '', '', 'FALSE', '', 'inq_2'],
               ],
             },
           }),
@@ -241,6 +242,34 @@ describe('GoogleSheetsClient', () => {
     });
   });
 
+  it('should ignore a submitted row when the form completion checkbox is checked', async () => {
+    // Arrange
+    const fakeSheets = {
+      spreadsheets: {
+        values: {
+          get: vi.fn().mockResolvedValue({
+            data: {
+              values: [
+                [...whispyHeaders, 'status', 'inquiry_id'],
+                ['2026-04-23', '그 외 문의하고 싶은 내용이 있어요', '', '', '', '', '', '', '이미 처리된 질문', '', '동의', 'done@example.com', '', '', 'TRUE', '', 'inq_2'],
+              ],
+            },
+          }),
+          batchUpdate: vi.fn().mockResolvedValue({}),
+          update: vi.fn().mockResolvedValue({}),
+        },
+      },
+    };
+
+    const target = new GoogleSheetsClient(fakeSheets as never, 'sheet-id', '설문지 응답 시트1');
+
+    // Act
+    const result = await target.findInquiryByRow(2);
+
+    // Assert
+    expect(result).toBeNull();
+  });
+
   it('should include retryable drafting and failed rows before a Discord message exists', async () => {
     // Arrange
     const fakeSheets = {
@@ -250,8 +279,8 @@ describe('GoogleSheetsClient', () => {
             data: {
               values: [
                 [...whispyHeaders, 'status', 'inquiry_id', 'discord_message_id'],
-                ['2026-04-23', '그 외 문의하고 싶은 내용이 있어요', '', '', '', '', '', '', '질문', '', '동의', 'retry-a@example.com', '', '', 'TRUE', 'drafting', 'inq_2', ''],
-                ['2026-04-23', '그 외 문의하고 싶은 내용이 있어요', '', '', '', '', '', '', '질문', '', '동의', 'retry-b@example.com', '', '', 'TRUE', 'failed', 'inq_3', ''],
+                ['2026-04-23', '그 외 문의하고 싶은 내용이 있어요', '', '', '', '', '', '', '질문', '', '동의', 'retry-a@example.com', '', '', 'FALSE', 'drafting', 'inq_2', ''],
+                ['2026-04-23', '그 외 문의하고 싶은 내용이 있어요', '', '', '', '', '', '', '질문', '', '동의', 'retry-b@example.com', '', '', 'FALSE', 'failed', 'inq_3', ''],
                 ['2026-04-23', '그 외 문의하고 싶은 내용이 있어요', '', '', '', '', '', '', '질문', '', '동의', 'skip@example.com', '', '', 'TRUE', 'failed', 'inq_4', 'message_1'],
               ],
             },
@@ -271,7 +300,7 @@ describe('GoogleSheetsClient', () => {
     expect(result.map((item) => item.inquiryId)).toEqual(['inq_2', 'inq_3']);
   });
 
-  it('should batch managed field updates in one Sheets request', async () => {
+  it('should batch managed and existing form field updates in one Sheets request', async () => {
     // Arrange
     const batchUpdate = vi.fn().mockResolvedValue({});
     const fakeSheets = {
@@ -294,6 +323,7 @@ describe('GoogleSheetsClient', () => {
     await target.updateManagedFields(2, {
       inquiry_id: 'inq_2',
       status: 'drafting',
+      '완료 여부': 'TRUE',
       error_message: '',
     });
 
@@ -304,6 +334,7 @@ describe('GoogleSheetsClient', () => {
         data: [
           { range: "'설문지 응답 시트1'!Q2", values: [['inq_2']] },
           { range: "'설문지 응답 시트1'!P2", values: [['drafting']] },
+          { range: "'설문지 응답 시트1'!O2", values: [['TRUE']] },
           { range: "'설문지 응답 시트1'!R2", values: [['']] },
         ],
         valueInputOption: 'RAW',

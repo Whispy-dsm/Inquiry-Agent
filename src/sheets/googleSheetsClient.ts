@@ -2,7 +2,7 @@ import { google, type sheets_v4 } from 'googleapis';
 import type { OAuth2Client } from 'google-auth-library';
 import type { Inquiry } from '../domain/inquiry.js';
 import type { KnowledgeCircuitFeedbackRef } from '../domain/knowledgeCircuit.js';
-import { buildManagedColumnUpdates, getReplyEmail, mapRowToInquiry } from './sheetColumns.js';
+import { buildManagedColumnUpdates, getReplyEmail, isCompletionChecked, mapRowToInquiry } from './sheetColumns.js';
 import { normalizeSheetName, quoteSheetName, sheetNamesMatch } from './sheetName.js';
 
 /** Google Sheet에 worker가 직접 관리하는 출력 컬럼 목록입니다. */
@@ -122,10 +122,13 @@ export class GoogleSheetsClient {
 
     return rows
       .map((row, index) => ({
+        completionChecked: isCompletionChecked(headers, row),
         discordMessageId: discordMessageIdIndex >= 0 ? row[discordMessageIdIndex] ?? '' : '',
         inquiry: mapRowToInquiry(headers, row, index + 2),
       }))
-      .filter(({ discordMessageId, inquiry }) => isRetryablePreReviewInquiry(inquiry, discordMessageId))
+      .filter(({ completionChecked, discordMessageId, inquiry }) => (
+        !completionChecked && isRetryablePreReviewInquiry(inquiry, discordMessageId)
+      ))
       .map(({ inquiry }) => inquiry);
   }
 
@@ -140,6 +143,10 @@ export class GoogleSheetsClient {
     const row = rows[rowNumber - 2];
 
     if (!row) {
+      return null;
+    }
+
+    if (isCompletionChecked(headers, row)) {
       return null;
     }
 

@@ -125,7 +125,7 @@ describe('loadEnv', () => {
 
     // Assert
     expect(result.DISCORD_REVIEW_POST_INTERVAL_MS).toBe(1000);
-    expect(result.ENABLE_FALLBACK_POLLING).toBe(true);
+    expect(result.ENABLE_FALLBACK_POLLING).toBe(false);
     expect(result.ENABLE_INTERNAL_EVIDENCE_ROUTER).toBe(false);
     expect(result.ENABLE_INTERNAL_EVIDENCE_GITHUB_SEARCH).toBe(false);
     expect(result.ENABLE_INTERNAL_EVIDENCE_NOTION_SEARCH).toBe(false);
