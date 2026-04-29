@@ -541,3 +541,35 @@ Verification: focused Discord/webhook tests, `npm run typecheck`, `npm test`, `n
 - Fix: edit modal submit now sends the edited email, writes the same Sheet audit fields, then edits the original review card to append the sent result and remove buttons.
 - Verification: focused Discord/worker tests, `npm run typecheck`, full `npm test` (17 files / 58 tests), `npm run build`, and `git diff --check` passed.
 - Remaining risks: `npm run lint` is still blocked by the repository's existing missing ESLint v9 `eslint.config.*` file.
+
+## Sent Email Completion Checkbox
+
+### Plan
+
+- [x] Add regression coverage that approve and edited-send mark the form `완료 여부` checkbox as checked after Gmail succeeds.
+- [x] Update the sent-email Sheet writes to set the existing `완료 여부` column to `TRUE`.
+- [x] Verify focused Discord/Sheets tests, typecheck, build, and diff hygiene.
+
+### Review
+
+- Changed files: `src/discord/interactionHandlers.ts`, `tests/discord/interactionHandlers.test.ts`, `tests/sheets/googleSheetsClient.test.ts`, `tasks/todo.md`
+- Simplifications made: reused the existing Sheet update call instead of adding a new API or managed column; the existing `완료 여부` column is updated only when Gmail send has already succeeded.
+- Verification: focused Discord/Sheets tests, full `npm test` (17 files / 58 tests), `npm run typecheck`, `npm run build`, and `git diff --check` passed.
+- Remaining risks: `npm run lint` is still blocked by the repository's existing missing ESLint v9 `eslint.config.*` file.
+
+## Gemini Call Storm Guard
+
+### Plan
+
+- [x] Add regression coverage for skipping `완료 여부=TRUE` rows before Gemini draft generation.
+- [x] Make fallback polling opt-in by default across env parsing and deployment templates.
+- [x] Update docs and local runtime setting so webhook-only processing is the default path.
+- [x] Run focused tests, full tests, typecheck, build, lint attempt, and diff hygiene.
+
+### Review
+
+- Changed files: `src/sheets/sheetColumns.ts`, `src/sheets/googleSheetsClient.ts`, `src/config/env.ts`, `docker-compose.yml`, `docker-stack.yml`, `docs/runbook.md`, `docs/운영-플로우-및-env-설정-가이드.md`, `tests/sheets/googleSheetsClient.test.ts`, `tests/config/env.test.ts`, `tasks/todo.md`; local ignored `.env` was also updated to `ENABLE_FALLBACK_POLLING=false`.
+- Root cause: fallback polling was enabled by default and immediately scanned the full Sheet, while blank `status` rows were treated as new even when `완료 여부` was already `TRUE`.
+- Simplifications made: filtered completed rows at the Sheets adapter boundary and changed fallback polling defaults instead of adding rate-limit state or a new database.
+- Verification: focused config/Sheets tests, full `npm test` (17 files / 59 tests), `npm run typecheck`, `npm run build`, `docker compose -f docker-compose.yml config`, `docker compose -f docker-stack.yml config`, and `git diff --check` passed.
+- Remaining risks: `npm run lint` is still blocked by the repository's existing missing ESLint v9 `eslint.config.*` file; any deployed secret/environment that explicitly sets `ENABLE_FALLBACK_POLLING=true` must be changed separately.
