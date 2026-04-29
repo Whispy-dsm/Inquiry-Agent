@@ -10,3 +10,4 @@ google-credentials.json
 token.json
 auth.json
 .DS_Store
+.gstack/
