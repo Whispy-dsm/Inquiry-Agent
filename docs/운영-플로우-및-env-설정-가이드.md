@@ -199,3 +199,11 @@ INTERNAL_EVIDENCE_GITHUB_NOTION_REPOS=
 ```
 
 Backend/Flutter는 GitHub repo 설정을 사용하고, Notion은 Notion API 설정을 사용한다.
+
+## Webhook / fallback polling 기준
+
+- 기본 운영은 Google Apps Script webhook이 새 row 한 건만 worker에 전달하는 방식이다.
+- `ENABLE_FALLBACK_POLLING=false`가 기본값이다.
+- fallback polling은 webhook 장애 복구가 필요하고, 과거 blank-status row가 정리되어 있을 때만 켠다.
+- `완료 여부=TRUE`인 row는 이미 처리된 row로 보고 신규 Gemini 초안 생성 대상에서 제외한다.
+- `완료 여부`는 Google Form 응답 컬럼이고 worker의 상태 컬럼은 아니다. worker 상태는 계속 `status` 컬럼에 기록한다.

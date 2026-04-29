@@ -104,4 +104,18 @@ Docker Compose and Swarm mount `/app/data` as a named volume so the SQLite file 
 
 ## Webhook Setup
 
-Set `WEBHOOK_SECRET` and configure Google Form or Sheets automation to call the worker webhook. Keep fallback polling enabled when missed webhook recovery is required.
+1. Set `WEBHOOK_PORT=3000` for the container listener. Set `WEBHOOK_HOST_PORT=3001` if the host already uses port 3000.
+2. Set `WEBHOOK_SECRET` to a shared secret string.
+3. Keep `ENABLE_FALLBACK_POLLING=false` for normal webhook-only processing. Enable fallback polling only after old rows are cleaned or marked complete.
+4. Deploy the worker somewhere Google Apps Script can reach. Apps Script cannot call `localhost`; use a public deployment URL or a temporary tunnel during local testing.
+5. In the Google Sheet connected to the form, open Extensions > Apps Script.
+6. Add the script from `docs/apps-script/google-form-submit-webhook.gs`.
+7. Set `WEBHOOK_URL` to `https://YOUR_PUBLIC_BOT_URL/webhooks/google-form-submit`.
+8. Set `WEBHOOK_SECRET` in Apps Script to the same value as `.env`.
+9. Add an installable trigger for `onFormSubmit` with event source "From spreadsheet" and event type "On form submit".
+
+## Completed Row Guard
+
+The Google Form `완료 여부` column is not a worker state column. The worker still writes its own `status` column, but rows with `완료 여부=TRUE` are treated as already completed and are excluded from new Gemini draft generation.
+
+Do not enable fallback polling on a sheet with historical blank-status rows unless completed rows are checked or old rows are cleaned. The worker treats unchecked, blank-status rows as draft candidates.
