@@ -124,7 +124,7 @@ GMAIL_FROM_EMAIL=replace-with-sender@example.com
 GMAIL_FROM_NAME=Support Team
 
 POLL_INTERVAL_MS=600000
-ENABLE_FALLBACK_POLLING=true
+ENABLE_FALLBACK_POLLING=false
 WEBHOOK_PORT=3000
 WEBHOOK_SECRET=replace-with-shared-webhook-secret
 DRY_RUN_EMAIL=true
@@ -238,10 +238,9 @@ GOOGLE_SHEET_ID=1AbCdEfGhIjKlMnOpQrStUvWxYz
 - `false`
   - webhook 이벤트가 들어올 때만 처리
 - `true`
-  - 기본값
   - webhook 외에 polling도 같이 수행
-  - 현재 권장값은 `true`입니다
   - Apps Script 누락이나 일시 장애 복구 용도로 10분마다 신규 row를 다시 확인합니다
+  - 과거 row의 `status`가 비어 있으면 대량 초안 생성이 발생할 수 있으므로, 운영 기본값은 `false`입니다
 
 `WEBHOOK_PORT`
 
@@ -313,7 +312,7 @@ Google Form
 ### 안전한 첫 실행
 
 1. `.env`에서 `DRY_RUN_EMAIL=true`
-2. `ENABLE_FALLBACK_POLLING=true`
+2. `ENABLE_FALLBACK_POLLING=false`
 3. `POLL_INTERVAL_MS=600000`
 4. `WEBHOOK_SECRET` 설정
 5. Apps Script 트리거 설정
@@ -350,3 +349,4 @@ Discord 검토 카드와 Apps Script Discord 알림은 별개입니다.
 `완료 여부`는 폼 응답 컬럼이고 worker 상태 컬럼이 아닙니다.
 
 - worker 상태는 `status` 컬럼을 별도로 사용합니다.
+- 단, `완료 여부`가 `TRUE`인 row는 이미 처리된 row로 보고 신규 Gemini 초안 생성 대상에서 제외합니다.

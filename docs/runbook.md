@@ -36,7 +36,7 @@ Whispy 고객 문의 답변 초안의 근거 문서는 [docs/rag/README.md](</C:
 
 1. Set `WEBHOOK_PORT=3000` for the container listener. Set `WEBHOOK_HOST_PORT=3001` if the host already uses port 3000.
 2. Set `WEBHOOK_SECRET` to a shared secret string.
-3. Keep `ENABLE_FALLBACK_POLLING=true` and `POLL_INTERVAL_MS=600000` so missed webhook events are recovered every 10 minutes.
+3. Keep `ENABLE_FALLBACK_POLLING=false` for normal webhook-only processing. Enable fallback polling only after old rows are cleaned or marked complete.
 4. Deploy the worker somewhere Google Apps Script can reach. Apps Script cannot call `localhost`; use a public deployment URL or a temporary tunnel during local testing.
 5. In the Google Sheet connected to the form, open Extensions > Apps Script.
 6. Add the script from `docs/apps-script/google-form-submit-webhook.gs`.
@@ -69,6 +69,7 @@ Whispy 고객 문의 답변 초안의 근거 문서는 [docs/rag/README.md](</C:
 
 - Do not run more than one worker instance until durable multi-instance locking is implemented.
 - Keep high-risk warnings visible for `OTHER`, deletion, legal, payment, and security inquiries.
+- Do not enable fallback polling on a sheet with historical blank-status rows; the worker treats unchecked, blank-status rows as draft candidates.
 - If Gmail send fails, store `failed` in `status` and write the reason to `error_message`.
 - If Gemini fails or returns invalid JSON, fall back to the safe draft and require human review in Discord.
 - Do not remove the Discord approval gate in production without a separate safety review.
