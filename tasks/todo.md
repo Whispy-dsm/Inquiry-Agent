@@ -505,3 +505,39 @@ Verification: focused Discord/webhook tests, `npm run typecheck`, `npm test`, `n
 - Simplifications made: kept the throttle as an optional interval on the existing in-process Discord queue instead of adding a separate scheduler or dependency.
 - Verification: focused env/Discord tests, `npm run typecheck`, `npm run build`, full `npm test`, `docker compose -f docker-compose.yml config`, `docker compose -f docker-stack.yml config`, and `git diff --check` passed.
 - Remaining risks: `npm run lint` is still blocked by the existing missing ESLint v9 `eslint.config.*` file; the interval is process-local and does not coordinate multiple running containers.
+
+## Approve Email Send Investigation
+
+### Plan
+
+- [x] Start OMX team runtime with one executor and capture startup evidence.
+- [x] Inspect Discord approve/edit handlers, worker wiring, Gmail client, and Sheets review lookup.
+- [x] Reproduce the suspected approve-without-send behavior with focused tests or local diagnostics.
+- [x] Add the smallest regression coverage needed after isolating dry-run configuration as the likely cause.
+- [x] Run focused regression tests, typecheck, build, and team shutdown verification.
+
+### Review
+
+- Changed files: `tests/email/gmailClient.test.ts`, `tasks/todo.md`; `.omx/context/email-approve-send-20260428T135325Z.md` was added as ignored team context.
+- Simplifications made: did not change runtime send behavior; existing approve path already calls `GmailClient.sendEmail`, and the added test only proves Gmail send is called when dry-run is disabled.
+- Findings: local `.env` and rendered `docker-compose.yml` currently set `DRY_RUN_EMAIL=true`, which intentionally prevents real Gmail API sends and returns a `dry_...` message id instead.
+- Verification: focused email/Discord/Sheets tests, `npm run typecheck`, full `npm test` (17 files / 57 tests), `npm run build`, `git diff --check`, and `docker compose -f docker-compose.yml config | Select-String -Pattern 'DRY_RUN_EMAIL|GMAIL_FROM_EMAIL'`.
+- Team runtime: `omx team 1:executor` started as `read-only-investigation-for-in`; worker ACK was received, then the worker was terminalized as failed after hitting Codex usage/token refresh limits; `omx team shutdown read-only-investigation-for-in --confirm-issues` completed and team state was removed.
+- Remaining risks: `npm run lint` is still blocked by the repository's existing missing ESLint v9 `eslint.config.*` file; Docker daemon was unavailable locally, so live container logs/service env could not be inspected; production `APP_ENV` secret still needs to be checked for `DRY_RUN_EMAIL=false` if real Gmail delivery is expected.
+
+## Edit Modal Button Disable Fix
+
+### Plan
+
+- [x] Add regression coverage that edited-send removes the original review card buttons.
+- [x] Move edit modal send completion into the Discord interaction handler boundary.
+- [x] Keep edited-send duplicate protections and Sheet audit fields unchanged.
+- [x] Run focused Discord/worker tests, typecheck, build, and diff hygiene checks.
+
+### Review
+
+- Changed files: `src/discord/interactionHandlers.ts`, `src/worker.ts`, `tests/discord/interactionHandlers.test.ts`, `tasks/todo.md`
+- Simplifications made: reused the existing approve completion pattern (`deferUpdate` then `editReply` with `components: []`) instead of adding a separate Discord message updater.
+- Fix: edit modal submit now sends the edited email, writes the same Sheet audit fields, then edits the original review card to append the sent result and remove buttons.
+- Verification: focused Discord/worker tests, `npm run typecheck`, full `npm test` (17 files / 58 tests), `npm run build`, and `git diff --check` passed.
+- Remaining risks: `npm run lint` is still blocked by the repository's existing missing ESLint v9 `eslint.config.*` file.

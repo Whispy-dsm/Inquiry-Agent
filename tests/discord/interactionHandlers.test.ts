@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { handleEditSubmit, handleReviewButton } from '../../src/discord/interactionHandlers.js';
+import { handleEditSubmit, handleEditSubmitSend, handleReviewButton } from '../../src/discord/interactionHandlers.js';
 
 describe('handleReviewButton', () => {
   it('should open an edit modal with draft subject and body prefilled', async () => {
@@ -343,6 +343,77 @@ describe('handleEditSubmit', () => {
       subject: '수정 제목',
       body: '수정 본문',
       handledBy: 'discord_user_1',
+    });
+  });
+});
+
+describe('handleEditSubmitSend', () => {
+  it('should send the edited email, persist final fields, and remove review buttons', async () => {
+    // Arrange
+    const interaction = {
+      customId: 'editSubmit:inq_1',
+      user: { id: 'discord_user_1' },
+      message: { content: 'review message' },
+      fields: {
+        getTextInputValue: vi
+          .fn()
+          .mockImplementation((field: string) => (field === 'subject' ? '수정 제목' : '수정 본문')),
+      },
+      isFromMessage: vi.fn().mockReturnValue(true),
+      deferUpdate: vi.fn().mockResolvedValue(undefined),
+      deferReply: vi.fn(),
+      editReply: vi.fn().mockResolvedValue(undefined),
+      followUp: vi.fn(),
+      reply: vi.fn(),
+    };
+    const deps = {
+      lock: {
+        tryAcquire: vi.fn().mockResolvedValue({ acquired: true, holder: 'discord_user_1' }),
+        release: vi.fn(),
+      },
+      sheets: {
+        findInquiryReview: vi.fn().mockResolvedValue({
+          rowNumber: 2,
+          email: 'user@example.com',
+          draftSubject: '문의 답변드립니다',
+          draftBody: '안녕하세요.',
+          status: 'pending_review',
+        }),
+        updateManagedFields: vi.fn().mockResolvedValue(undefined),
+      },
+      gmail: {
+        sendEmail: vi.fn().mockResolvedValue({ messageId: 'gmail_123', dryRun: false }),
+      },
+      fromEmail: 'support@example.com',
+      fromName: 'Support Team',
+    };
+
+    // Act
+    await handleEditSubmitSend(interaction as never, deps as never);
+
+    // Assert
+    expect(interaction.deferUpdate).toHaveBeenCalledOnce();
+    expect(deps.gmail.sendEmail).toHaveBeenCalledWith({
+      fromEmail: 'support@example.com',
+      fromName: 'Support Team',
+      to: 'user@example.com',
+      subject: '수정 제목',
+      body: '수정 본문',
+    });
+    expect(deps.sheets.updateManagedFields).toHaveBeenNthCalledWith(1, 2, {
+      status: 'sending',
+      handled_by: 'discord_user_1',
+      handled_at: expect.any(String),
+    });
+    expect(deps.sheets.updateManagedFields).toHaveBeenNthCalledWith(2, 2, {
+      status: 'sent',
+      final_subject: '수정 제목',
+      final_body: '수정 본문',
+      gmail_message_id: 'gmail_123',
+    });
+    expect(interaction.editReply).toHaveBeenCalledWith({
+      content: expect.stringContaining('Sent after edit by <@discord_user_1>'),
+      components: [],
     });
   });
 });

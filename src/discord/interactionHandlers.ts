@@ -201,3 +201,118 @@ export async function handleEditSubmit(
     handledBy: interaction.user.id,
   };
 }
+
+/**
+ * Discord edit modal 제출 후 수정된 이메일을 발송하고 원본 review card를 완료 상태로 갱신합니다.
+ *
+ * @param interaction - `editSubmit:{inquiryId}` modal submit interaction
+ * @param deps - Sheets, Gmail, lock 등 외부 의존성
+ */
+export async function handleEditSubmitSend(
+  interaction: ModalSubmitInteraction,
+  deps: InteractionHandlerDeps,
+): Promise<void> {
+  const edit = await handleEditSubmit(interaction);
+  const lockResult = await deps.lock.tryAcquire(edit.inquiryId, edit.handledBy);
+
+  if (!lockResult.acquired) {
+    await interaction.reply({
+      content: `이미 <@${lockResult.holder}> 님이 처리 중입니다.`,
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const shouldUpdateReviewMessage = interaction.isFromMessage();
+
+  try {
+    if (shouldUpdateReviewMessage) {
+      await interaction.deferUpdate();
+    } else {
+      await interaction.deferReply({ ephemeral: true });
+    }
+
+    const review = await deps.sheets.findInquiryReview(edit.inquiryId);
+
+    if (!review) {
+      await sendEditNotice(interaction, shouldUpdateReviewMessage, '문의 정보를 찾을 수 없습니다.');
+      return;
+    }
+
+    if (review.status === 'sent' || review.status === 'rejected') {
+      await sendEditNotice(interaction, shouldUpdateReviewMessage, `이미 처리된 문의입니다. 현재 상태: ${review.status}`);
+      return;
+    }
+
+    if (review.status === 'sending') {
+      await sendEditNotice(interaction, shouldUpdateReviewMessage, '이미 처리 중인 문의입니다.');
+      return;
+    }
+
+    await deps.sheets.updateManagedFields(review.rowNumber, {
+      status: 'sending',
+      handled_by: edit.handledBy,
+      handled_at: new Date().toISOString(),
+    });
+
+    let sent: Awaited<ReturnType<GmailClient['sendEmail']>>;
+    try {
+      sent = await deps.gmail.sendEmail({
+        fromEmail: deps.fromEmail,
+        fromName: deps.fromName,
+        to: review.email,
+        subject: edit.subject,
+        body: edit.body,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await deps.sheets.updateManagedFields(review.rowNumber, {
+        status: 'failed',
+        error_message: message,
+      });
+      await sendEditNotice(interaction, shouldUpdateReviewMessage, '처리 중 오류가 발생했습니다. 로그를 확인해 주세요.');
+      return;
+    }
+
+    try {
+      await deps.sheets.updateManagedFields(review.rowNumber, {
+        status: 'sent',
+        final_subject: edit.subject,
+        final_body: edit.body,
+        gmail_message_id: sent.messageId,
+      });
+    } catch {
+      await sendEditNotice(
+        interaction,
+        shouldUpdateReviewMessage,
+        '이메일은 발송됐지만 시트 상태 업데이트에 실패했습니다. 중복 발송을 막기 위해 상태를 확인해 주세요.',
+      );
+      return;
+    }
+
+    if (shouldUpdateReviewMessage) {
+      await interaction.editReply({
+        content: `${interaction.message.content}\n\n처리 결과: Sent after edit by <@${edit.handledBy}>`,
+        components: [],
+      });
+      return;
+    }
+
+    await interaction.editReply({ content: '수정된 답변을 이메일로 발송했습니다.' });
+  } finally {
+    deps.lock.release(edit.inquiryId, edit.handledBy);
+  }
+}
+
+async function sendEditNotice(
+  interaction: ModalSubmitInteraction,
+  shouldUpdateReviewMessage: boolean,
+  content: string,
+): Promise<void> {
+  if (shouldUpdateReviewMessage) {
+    await interaction.followUp({ content, ephemeral: true });
+    return;
+  }
+
+  await interaction.editReply({ content });
+}

@@ -4,7 +4,7 @@ import { MarkdownDirectoryContextProvider } from './ai/contextProvider.js';
 import { GeminiDraftGenerator } from './ai/geminiDraftGenerator.js';
 import { loadEnv } from './config/env.js';
 import { DiscordReviewBot } from './discord/discordBot.js';
-import { handleEditSubmit, handleReviewButton } from './discord/interactionHandlers.js';
+import { handleEditSubmitSend, handleReviewButton } from './discord/interactionHandlers.js';
 import { GmailClient } from './email/gmailClient.js';
 import { GoogleSheetsClient } from './sheets/googleSheetsClient.js';
 import { createGoogleFormWebhookServer } from './webhook/googleFormWebhookServer.js';
@@ -137,76 +137,13 @@ export async function startWorker(
       }
 
       if (interaction.isModalSubmit() && interaction.customId?.startsWith('editSubmit:')) {
-        const edit = await handleEditSubmit(interaction as Parameters<typeof handleEditSubmit>[0]);
-        const lock = await inquiryLock.tryAcquire(edit.inquiryId, edit.handledBy);
-
-        if (!lock.acquired) {
-          await replyEphemeral(interaction, `이미 <@${lock.holder}> 님이 처리 중입니다.`);
-          return;
-        }
-
-        try {
-          const review = await sheetsClient.findInquiryReview(edit.inquiryId);
-
-          if (!review) {
-            await replyEphemeral(interaction, '문의 정보를 찾을 수 없습니다.');
-            return;
-          }
-
-          if (review.status === 'sent' || review.status === 'rejected') {
-            await replyEphemeral(interaction, `이미 처리된 문의입니다. 현재 상태: ${review.status}`);
-            return;
-          }
-
-          if (review.status === 'sending') {
-            await replyEphemeral(interaction, '이미 처리 중인 문의입니다.');
-            return;
-          }
-
-          await sheetsClient.updateManagedFields(review.rowNumber, {
-            status: 'sending',
-            handled_by: edit.handledBy,
-            handled_at: new Date().toISOString(),
-          });
-
-          let sent: Awaited<ReturnType<GmailClient['sendEmail']>>;
-          try {
-            sent = await gmailClient.sendEmail({
-              fromEmail: env.GMAIL_FROM_EMAIL,
-              fromName: env.GMAIL_FROM_NAME,
-              to: review.email,
-              subject: edit.subject,
-              body: edit.body,
-            });
-          } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            await sheetsClient.updateManagedFields(review.rowNumber, {
-              status: 'failed',
-              error_message: message,
-            });
-            await replyEphemeral(interaction, '처리 중 오류가 발생했습니다. 로그를 확인해 주세요.');
-            return;
-          }
-
-          try {
-            await sheetsClient.updateManagedFields(review.rowNumber, {
-              status: 'sent',
-              final_subject: edit.subject,
-              final_body: edit.body,
-              gmail_message_id: sent.messageId,
-            });
-          } catch {
-            await replyEphemeral(
-              interaction,
-              '이메일은 발송됐지만 시트 상태 업데이트에 실패했습니다. 중복 발송을 막기 위해 상태를 확인해 주세요.',
-            );
-            return;
-          }
-
-          await replyEphemeral(interaction, '수정된 답변을 이메일로 발송했습니다.');
-        } finally {
-          inquiryLock.release(edit.inquiryId, edit.handledBy);
-        }
+        await handleEditSubmitSend(interaction as Parameters<typeof handleEditSubmitSend>[0], {
+          lock: inquiryLock,
+          sheets: sheetsClient,
+          gmail: gmailClient,
+          fromEmail: env.GMAIL_FROM_EMAIL,
+          fromName: env.GMAIL_FROM_NAME,
+        });
       }
     } catch (error) {
       logger.error({ error }, 'Discord interaction failed');
