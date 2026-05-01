@@ -178,6 +178,8 @@ describe('loadEnv', () => {
       const template = readFileSync(templatePath, 'utf8');
 
       // Assert
+      expect(template).toContain('ENABLE_FALLBACK_POLLING: ${ENABLE_FALLBACK_POLLING:-false}');
+      expect(template).not.toContain('ENABLE_FALLBACK_POLLING: ${ENABLE_FALLBACK_POLLING:-true}');
       expect(template).toContain('ENABLE_INTERNAL_EVIDENCE_ROUTER: ${ENABLE_INTERNAL_EVIDENCE_ROUTER:-false}');
       expect(template).toContain('ENABLE_INTERNAL_EVIDENCE_GITHUB_SEARCH: ${ENABLE_INTERNAL_EVIDENCE_GITHUB_SEARCH:-false}');
       expect(template).toContain('ENABLE_INTERNAL_EVIDENCE_NOTION_SEARCH: ${ENABLE_INTERNAL_EVIDENCE_NOTION_SEARCH:-false}');

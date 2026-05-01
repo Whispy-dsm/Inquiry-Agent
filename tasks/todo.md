@@ -838,7 +838,7 @@ Verification: focused Discord/webhook tests, `npm run typecheck`, `npm test`, `n
 - Changed worker wiring so the SQLite knowledge circuit is created only when `ENABLE_INTERNAL_EVIDENCE_ROUTER=true`.
 - Cached the TypeScript compiler import and gave the AST regression test enough time for the production 10s fallback path.
 - Re-applied completed-row filtering, completion checkbox writes after successful send, and fallback polling default guidance.
-- Verification: focused review tests, full `npm run test` (18 files / 93 tests), `npm run typecheck`, `npm run build`, Docker Compose/Stack config rendering, and `git diff --check` passed.
+- Verification: focused review tests, full `npm run test` (18 files / 94 tests), `npm run typecheck`, `npm run build`, Docker Compose/Stack config rendering, and `git diff --check` passed after #9/#10 integration.
 - Remaining risks: `npm run lint` is still blocked by the repository's existing missing ESLint v9 `eslint.config.*` file; `node:sqlite` still emits Node's experimental warning in tests.
 
 ## Sent Email Completion Checkbox
@@ -853,7 +853,7 @@ Verification: focused Discord/webhook tests, `npm run typecheck`, `npm test`, `n
 
 - Changed files: `src/discord/interactionHandlers.ts`, `tests/discord/interactionHandlers.test.ts`, `tests/sheets/googleSheetsClient.test.ts`, `tasks/todo.md`
 - Simplifications made: reused the existing Sheet update call instead of adding a new API or managed column; the existing `완료 여부` column is updated only when Gmail send has already succeeded.
-- Verification: focused Discord/Sheets tests, full `npm test`, `npm run typecheck`, `npm run build`, and `git diff --check` passed in the original #9 branch; this branch will be reverified after #9/#10 integration.
+- Verification: focused Discord/Sheets tests, full `npm test`, `npm run typecheck`, `npm run build`, and `git diff --check` passed after #9/#10 integration.
 - Remaining risks: `npm run lint` is still blocked by the repository's existing missing ESLint v9 `eslint.config.*` file.
 
 ## Gemini Call Storm Guard
@@ -870,5 +870,5 @@ Verification: focused Discord/webhook tests, `npm run typecheck`, `npm test`, `n
 - Changed files: `src/sheets/sheetColumns.ts`, `src/sheets/googleSheetsClient.ts`, `src/config/env.ts`, `docs/runbook.md`, `docs/운영-플로우-및-env-설정-가이드.md`, `tests/sheets/googleSheetsClient.test.ts`, `tests/config/env.test.ts`, `tasks/todo.md`.
 - Root cause: fallback polling was enabled by default and immediately scanned the full Sheet, while blank `status` rows were treated as new even when `완료 여부` was already `TRUE`.
 - Simplifications made: filtered completed rows at the Sheets adapter boundary and changed fallback polling defaults instead of adding rate-limit state or a new database.
-- Verification: focused config/Sheets tests, full `npm test`, `npm run typecheck`, `npm run build`, and `git diff --check` passed in the original #9 branch; this branch will be reverified after #9/#10 integration.
+- Verification: focused config/Sheets tests, full `npm test`, `npm run typecheck`, `npm run build`, and `git diff --check` passed after #9/#10 integration.
 - Remaining risks: `npm run lint` is still blocked by the repository's existing missing ESLint v9 `eslint.config.*` file; deployed environments that explicitly set `ENABLE_FALLBACK_POLLING=true` still need their secret/env value changed separately.

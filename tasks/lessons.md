@@ -81,3 +81,5 @@
 - Correction: The user rejected broad, convention-breaking PR work and asked for review fixes to be split and scoped correctly.
 - Rule: When fixing PR review findings, first rebase or remove unrelated branch history, then inspect the resulting diff for leftover files/tests/docs from the previous task before adding new fixes.
 - Rule: Keep runtime fixes, tests, and docs in separate commits when the user asks for granular PR history.
+- Correction: The user later changed the scope and explicitly asked to include #9 in the #10 PR after it had been removed.
+- Rule: Treat the user's latest scope update as authoritative; if a previously excluded branch must be included, re-apply it deliberately and then re-check cross-scope config defaults for consistency.
