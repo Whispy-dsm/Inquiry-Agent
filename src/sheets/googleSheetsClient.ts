@@ -1,6 +1,7 @@
 import { google, type sheets_v4 } from 'googleapis';
 import type { OAuth2Client } from 'google-auth-library';
 import type { Inquiry } from '../domain/inquiry.js';
+import type { KnowledgeCircuitFeedbackRef } from '../domain/knowledgeCircuit.js';
 import { buildManagedColumnUpdates, getReplyEmail, mapRowToInquiry } from './sheetColumns.js';
 import { normalizeSheetName, quoteSheetName, sheetNamesMatch } from './sheetName.js';
 
@@ -8,12 +9,11 @@ import { normalizeSheetName, quoteSheetName, sheetNamesMatch } from './sheetName
 const managedColumns = [
   'inquiry_id',
   'status',
-  'risk_level',
-  'risk_reasons',
   'discord_channel_id',
   'discord_message_id',
   'draft_subject',
   'draft_body',
+  'evidence_feedback_refs',
   'final_subject',
   'final_body',
   'handled_by',
@@ -221,6 +221,7 @@ export class GoogleSheetsClient {
     email: string;
     draftSubject: string;
     draftBody: string;
+    evidenceFeedbackRefs: KnowledgeCircuitFeedbackRef[];
     status: string;
   } | null> {
     const { headers, rows } = await this.readRows();
@@ -228,6 +229,7 @@ export class GoogleSheetsClient {
     const statusIndex = headers.indexOf('status');
     const subjectIndex = headers.indexOf('draft_subject');
     const bodyIndex = headers.indexOf('draft_body');
+    const evidenceFeedbackRefsIndex = headers.indexOf('evidence_feedback_refs');
 
     for (let i = 0; i < rows.length; i += 1) {
       const row = rows[i] ?? [];
@@ -238,6 +240,7 @@ export class GoogleSheetsClient {
           email: getReplyEmail(headers, row),
           draftSubject: row[subjectIndex] ?? '',
           draftBody: row[bodyIndex] ?? '',
+          evidenceFeedbackRefs: parseEvidenceFeedbackRefs(row[evidenceFeedbackRefsIndex] ?? ''),
           status: row[statusIndex] ?? 'new',
         };
       }
@@ -312,6 +315,35 @@ export class GoogleSheetsClient {
       `Available tabs: ${formatAvailableSheetNames(availableSheetNames)}.`,
     );
   }
+}
+
+function parseEvidenceFeedbackRefs(value: string): KnowledgeCircuitFeedbackRef[] {
+  if (!value.trim()) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.filter(isKnowledgeCircuitFeedbackRef);
+  } catch {
+    return [];
+  }
+}
+
+function isKnowledgeCircuitFeedbackRef(value: unknown): value is KnowledgeCircuitFeedbackRef {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Partial<KnowledgeCircuitFeedbackRef>;
+  return typeof candidate.nodeId === 'string' &&
+    typeof candidate.sourceType === 'string' &&
+    typeof candidate.sourceRef === 'string' &&
+    typeof candidate.contentHash === 'string';
 }
 
 /**

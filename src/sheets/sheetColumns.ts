@@ -42,7 +42,7 @@ function normalizeStatus(value: string): InquiryStatus {
 }
 
 function normalizeHeader(value: string): string {
-  return value.trim();
+  return value.replace(/\s+/g, ' ').trim();
 }
 
 function normalizeInquiryType(value: string): InquiryType {

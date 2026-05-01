@@ -10,6 +10,8 @@ import type { GmailClient } from '../email/gmailClient.js';
 import type { GoogleSheetsClient } from '../sheets/googleSheetsClient.js';
 import type { InquiryLock } from '../workflow/inquiryLock.js';
 
+type InquiryReview = NonNullable<Awaited<ReturnType<GoogleSheetsClient['findInquiryReview']>>>;
+
 /** Discord button/modal handler가 외부 시스템에 접근하기 위해 필요한 의존성입니다. */
 export interface InteractionHandlerDeps {
   lock: InquiryLock;
@@ -17,6 +19,9 @@ export interface InteractionHandlerDeps {
   gmail: GmailClient;
   fromEmail: string;
   fromName: string;
+  feedbackRecorder?: {
+    record(review: InquiryReview, outcome: 'approved' | 'edited' | 'rejected'): Promise<void>;
+  };
 }
 
 /**
@@ -112,6 +117,7 @@ export async function handleReviewButton(
         handled_by: holder,
         handled_at: new Date().toISOString(),
       });
+      await recordReviewFeedback(deps, review, 'rejected');
 
       await interaction.editReply({
         content: `${interaction.message.content}\n\n처리 결과: Rejected by <@${holder}>`,
@@ -158,6 +164,7 @@ export async function handleReviewButton(
           final_body: review.draftBody,
           gmail_message_id: sent.messageId,
         });
+        await recordReviewFeedback(deps, review, 'approved');
       } catch {
         await interaction.followUp({
           content: '이메일은 발송됐지만 시트 상태 업데이트에 실패했습니다. 중복 발송을 막기 위해 상태를 확인해 주세요.',
@@ -281,6 +288,7 @@ export async function handleEditSubmitSend(
         final_body: edit.body,
         gmail_message_id: sent.messageId,
       });
+      await recordReviewFeedback(deps, review, 'edited');
     } catch {
       await sendEditNotice(
         interaction,
@@ -301,6 +309,18 @@ export async function handleEditSubmitSend(
     await interaction.editReply({ content: '수정된 답변을 이메일로 발송했습니다.' });
   } finally {
     deps.lock.release(edit.inquiryId, edit.handledBy);
+  }
+}
+
+async function recordReviewFeedback(
+  deps: InteractionHandlerDeps,
+  review: InquiryReview,
+  outcome: 'approved' | 'edited' | 'rejected',
+): Promise<void> {
+  try {
+    await deps.feedbackRecorder?.record(review, outcome);
+  } catch {
+    // Knowledge memory feedback is best-effort and must not undo a completed human action.
   }
 }
 
