@@ -63,3 +63,9 @@
 - Correction: The user clarified that Notion is not GitHub and should be queried through the Notion API.
 - Rule: When a source is an external SaaS system, implement the provider against that system's API instead of modeling it as a local export or mirrored repository unless the user explicitly chooses that architecture.
 - Rule: Remove obsolete env knobs when a source-of-truth decision changes, so operators do not configure two conflicting paths.
+
+## Keep PR remediation inside the reviewed scope
+
+- Correction: The user rejected broad, convention-breaking PR work and asked for review fixes to be split and scoped correctly.
+- Rule: When fixing PR review findings, first rebase or remove unrelated branch history, then inspect the resulting diff for leftover files/tests/docs from the previous task before adding new fixes.
+- Rule: Keep runtime fixes, tests, and docs in separate commits when the user asks for granular PR history.

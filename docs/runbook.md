@@ -104,4 +104,4 @@ Docker Compose and Swarm mount `/app/data` as a named volume so the SQLite file 
 
 ## Webhook Setup
 
-Set `WEBHOOK_SECRET` and configure Google Form or Sheets automation to call the worker webhook. Keep fallback polling disabled unless webhook delivery is unavailable.
+Set `WEBHOOK_SECRET` and configure Google Form or Sheets automation to call the worker webhook. Keep fallback polling enabled when missed webhook recovery is required.

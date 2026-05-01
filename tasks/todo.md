@@ -818,3 +818,25 @@ Verification: focused Discord/webhook tests, `npm run typecheck`, `npm test`, `n
 - Remaining risks:
   - `node:sqlite` is still experimental in Node 22 and emits an `ExperimentalWarning`.
   - Lint cannot run until the repo adds an ESLint v9 flat config.
+
+## PR Review Remediation
+
+### Plan
+
+- [x] Rebase the feature branch directly onto `origin/main` so #9 history is no longer part of the PR.
+- [x] Remove completion-checkbox/fallback-polling drift left over from the previous branch scope.
+- [x] Harden final draft prompting so retrieved internal evidence is explicitly treated as untrusted quoted data.
+- [x] Prevent `ENABLE_KNOWLEDGE_CIRCUIT=true` from initializing SQLite when the internal evidence router is disabled.
+- [x] Stabilize GitHub AST evidence coverage around the runtime TypeScript compiler import timeout.
+- [x] Run focused tests, typecheck, build, and diff hygiene.
+- [x] Prepare the rebased branch for force-push and PR metadata update.
+
+### Review
+
+- Rebased `feature/10-sqlite-knowledge-circuit` onto `origin/main`; `origin/main..HEAD` now contains only #10 commits.
+- Added an explicit untrusted-data boundary to the final Gemini draft system prompt and internal evidence prompt section.
+- Changed worker wiring so the SQLite knowledge circuit is created only when `ENABLE_INTERNAL_EVIDENCE_ROUTER=true`.
+- Cached the TypeScript compiler import and gave the AST regression test enough time for the production 10s fallback path.
+- Restored fallback polling docs/templates to the application default instead of carrying the prior completion-checkbox branch drift.
+- Verification: focused review tests, full `npm run test` (18 files / 93 tests), `npm run typecheck`, `npm run build`, Docker Compose/Stack config rendering, and `git diff --check` passed.
+- Remaining risks: `npm run lint` is still blocked by the repository's existing missing ESLint v9 `eslint.config.*` file; `node:sqlite` still emits Node's experimental warning in tests.

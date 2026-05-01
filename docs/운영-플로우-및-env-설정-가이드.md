@@ -57,7 +57,7 @@ GMAIL_FROM_EMAIL=replace-with-sender@example.com
 GMAIL_FROM_NAME=Support Team
 
 POLL_INTERVAL_MS=600000
-ENABLE_FALLBACK_POLLING=false
+ENABLE_FALLBACK_POLLING=true
 WEBHOOK_PORT=3000
 WEBHOOK_SECRET=replace-with-shared-webhook-secret
 DRY_RUN_EMAIL=true
