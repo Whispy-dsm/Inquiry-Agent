@@ -38,9 +38,21 @@ type SpreadsheetMetadata = {
   data?: {
     sheets?: Array<{
       properties?: {
+        sheetId?: number;
         title?: string;
+        gridProperties?: {
+          columnCount?: number;
+        };
       };
     }>;
+  };
+};
+
+type SpreadsheetBatchUpdateRequest = {
+  appendDimension: {
+    sheetId: number;
+    dimension: 'COLUMNS';
+    length: number;
   };
 };
 
@@ -51,6 +63,12 @@ type SheetsLike = {
       spreadsheetId: string;
       fields: string;
     }): Promise<SpreadsheetMetadata>;
+    batchUpdate?(args: {
+      spreadsheetId: string;
+      requestBody: {
+        requests: SpreadsheetBatchUpdateRequest[];
+      };
+    }): Promise<unknown>;
     values: {
       get(args: {
         spreadsheetId: string;
@@ -202,6 +220,7 @@ export class GoogleSheetsClient {
 
     const startColumn = headers.length + 1;
     const endColumn = headers.length + missing.length;
+    await this.ensureColumnCapacity(endColumn);
 
     await retryOperation(async () => {
       await this.sheets.spreadsheets.values.update({
@@ -321,6 +340,67 @@ export class GoogleSheetsClient {
       `Normalized value: "${normalizeSheetName(this.sheetName)}". ` +
       `Available tabs: ${formatAvailableSheetNames(availableSheetNames)}.`,
     );
+  }
+
+  private async ensureColumnCapacity(requiredColumnCount: number): Promise<void> {
+    if (!this.sheets.spreadsheets.get || !this.sheets.spreadsheets.batchUpdate) {
+      return;
+    }
+
+    const properties = await this.resolveSheetProperties();
+
+    if (properties.sheetId === undefined) {
+      return;
+    }
+
+    const currentColumnCount = properties.columnCount ?? requiredColumnCount;
+    const missingColumnCount = requiredColumnCount - currentColumnCount;
+
+    if (missingColumnCount <= 0) {
+      return;
+    }
+
+    await retryOperation(async () => {
+      await this.sheets.spreadsheets.batchUpdate?.({
+        spreadsheetId: this.spreadsheetId,
+        requestBody: {
+          requests: [{
+            appendDimension: {
+              sheetId: properties.sheetId as number,
+              dimension: 'COLUMNS',
+              length: missingColumnCount,
+            },
+          }],
+        },
+      });
+    }, requestRetryAttempts);
+  }
+
+  private async resolveSheetProperties(): Promise<{ sheetId?: number; title: string; columnCount?: number }> {
+    const response = await retryOperation(async () => this.sheets.spreadsheets.get?.({
+      spreadsheetId: this.spreadsheetId,
+      fields: 'sheets.properties(sheetId,title,gridProperties.columnCount)',
+    }), requestRetryAttempts);
+    const availableSheetProperties = response?.data?.sheets
+      ?.map((sheet) => sheet.properties)
+      .filter((properties): properties is NonNullable<typeof properties> => Boolean(properties?.title)) ?? [];
+    const exactMatch = availableSheetProperties.find((properties) => properties.title === this.resolvedSheetName);
+    const normalizedMatch = availableSheetProperties.find((properties) => (
+      typeof properties.title === 'string' && sheetNamesMatch(properties.title, this.sheetName)
+    ));
+    const properties = exactMatch ?? normalizedMatch;
+
+    if (!properties?.title) {
+      return { title: await this.resolveSheetName() };
+    }
+
+    this.resolvedSheetName = properties.title;
+
+    return {
+      title: properties.title,
+      ...(typeof properties.sheetId === 'number' ? { sheetId: properties.sheetId } : {}),
+      ...(typeof properties.gridProperties?.columnCount === 'number' ? { columnCount: properties.gridProperties.columnCount } : {}),
+    };
   }
 }
 
