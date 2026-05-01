@@ -108,11 +108,13 @@ export function createWorkerApp(deps: WorkerAppDeps) {
  */
 export function createInternalEvidenceProviderFromEnv(
   env: InternalEvidenceEnv,
-  knowledgeCircuit = createKnowledgeCircuitFromEnv(env),
+  knowledgeCircuit?: KnowledgeCircuitService,
 ): InternalEvidenceProvider | undefined {
   if (!env.ENABLE_INTERNAL_EVIDENCE_ROUTER) {
     return undefined;
   }
+
+  const resolvedKnowledgeCircuit = knowledgeCircuit ?? createKnowledgeCircuitFromEnv(env);
 
   return createInternalEvidenceProvider({
     github: {
@@ -135,7 +137,7 @@ export function createInternalEvidenceProviderFromEnv(
       model: env.INTERNAL_EVIDENCE_EMBEDDING_MODEL,
       maxCandidates: env.INTERNAL_EVIDENCE_EMBEDDING_MAX_CANDIDATES,
     },
-    knowledgeCircuit,
+    knowledgeCircuit: resolvedKnowledgeCircuit,
   });
 }
 
@@ -189,7 +191,9 @@ export async function startWorker(
   const sheetsClient = GoogleSheetsClient.fromOAuth(oauth, env.GOOGLE_SHEET_ID, env.GOOGLE_SHEET_NAME);
   const gmailClient = GmailClient.fromOAuth(oauth, env.DRY_RUN_EMAIL);
   const contextProvider = new MarkdownDirectoryContextProvider();
-  const knowledgeCircuit = createKnowledgeCircuitFromEnv(env);
+  const knowledgeCircuit = env.ENABLE_INTERNAL_EVIDENCE_ROUTER
+    ? createKnowledgeCircuitFromEnv(env)
+    : undefined;
   const internalEvidenceProvider = createInternalEvidenceProviderFromEnv(env, knowledgeCircuit);
   const draftGeneratorOptions = internalEvidenceProvider ? { internalEvidenceProvider } : {};
   const draftGenerator = new GeminiDraftGenerator(

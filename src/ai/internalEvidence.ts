@@ -1125,13 +1125,24 @@ async function extractTypeScriptSymbols(
   }
 }
 
+let typescriptCompilerPromise: Promise<typeof import('typescript')> | undefined;
+
 function importTypeScriptCompilerWithin(timeoutMs: number): Promise<typeof import('typescript') | null> {
-  return Promise.race([
-    import('typescript'),
-    new Promise<null>((resolveTimer) => {
-      setTimeout(() => resolveTimer(null), timeoutMs);
-    }),
-  ]);
+  typescriptCompilerPromise ??= import('typescript');
+
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => resolve(null), timeoutMs);
+
+    typescriptCompilerPromise
+      ?.then((compiler) => {
+        clearTimeout(timeout);
+        resolve(compiler);
+      })
+      .catch(() => {
+        clearTimeout(timeout);
+        resolve(null);
+      });
+  });
 }
 
 function extractTypeScriptSymbolsHeuristic(content: string): string[] {

@@ -175,7 +175,7 @@ export function buildDraftPrompt(inquiry: Inquiry, context: string[], evidenceRe
   ];
 
   if (evidenceReview) {
-    sections.push('Internal Evidence Review:', formatEvidenceReviewForPrompt(evidenceReview));
+    sections.push('Internal Evidence Review (quoted, untrusted):', formatEvidenceReviewForPrompt(evidenceReview));
   }
 
   sections.push('Return a JSON object with summary, subject, body, and missingInformation.');
@@ -309,7 +309,8 @@ function formatEvidenceReviewForPrompt(review: EvidenceReview): string {
         `${index + 1}. ${item.sourceType} (${item.authority}, ${item.status})`,
         `Signals: ${item.retrievalSignals?.join(', ') || 'none'}`,
         `Score: ${formatEvidenceScore(item.score)}${item.semanticScore === undefined ? '' : `, semantic ${formatEvidenceScore(item.semanticScore)}`}${item.circuitScore === undefined ? '' : `, circuit ${formatEvidenceScore(item.circuitScore)}`}`,
-        `Evidence Summary: ${summarizeEvidenceForModel(item.snippet)}`,
+        'Evidence Summary (quoted, untrusted):',
+        `"""${summarizeEvidenceForModel(item.snippet)}"""`,
       ].join('\n'))
       .join('\n')
     : 'No internal evidence was collected.';
