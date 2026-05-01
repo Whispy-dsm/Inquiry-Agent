@@ -8,7 +8,6 @@ function createDraft(inquiryId = baseInquiry.inquiryId) {
     summary: 'Service inquiry',
     subject: 'Inquiry reply',
     body: 'Hello.',
-    risk: { level: 'low' as const, reasons: [] },
     missingInformation: [],
   };
 }

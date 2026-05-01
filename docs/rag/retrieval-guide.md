@@ -20,7 +20,7 @@
   "product": "Whispy",
   "doc_type": "policy | product_knowledge | feature_map | api_map | playbook | source_map",
   "audience": "customer | internal | developer",
-  "risk": "low | medium | high",
+  "review_policy": "standard | manual_required",
   "feature": "auth | account | music | focus | sleep | meditation | statistics | notification | payment | privacy | inquiry",
   "source_priority": 1,
   "source_ref": "docs/rag/product-knowledge.md#음악",
@@ -40,13 +40,13 @@
 | 잠 기록 | 수면 세션, sleep session, sleep statistics |
 | 집중 타이머 | 집중 세션, focus session, focus statistics |
 | 음악 저장 | 좋아요, 사운드스페이스, 청취 기록 |
-| 결제했는데 안 돼요 | 구독, Google Play, 프리미엄, 구매 복원, high risk |
-| 탈퇴하고 싶어요 | 회원 탈퇴, 개인정보 삭제, high risk |
+| 결제했는데 안 돼요 | 구독, Google Play, 프리미엄, 구매 복원, 담당자 검토 |
+| 탈퇴하고 싶어요 | 회원 탈퇴, 개인정보 삭제, 담당자 검토 |
 | 알림이 안 와요 | FCM, 알림 권한, 토픽 구독, notification |
 
 ## 검색 결과 조합
 
-1. `answer-policy.md`에서 위험도와 금지 표현을 확인한다.
+1. `answer-policy.md`에서 담당자 검토 필요 여부와 금지 표현을 확인한다.
 2. `inquiry-playbooks.md`에서 문의 유형별 답변 구조를 가져온다.
 3. `product-knowledge.md`에서 고객에게 말할 수 있는 설명을 가져온다.
 4. 개발/운영 확인이 필요한 경우에만 `feature-api-map.md`를 가져온다.
@@ -60,7 +60,7 @@
 - API와 고객 FAQ가 함께 검색되면 고객 답변에는 FAQ 표현을 우선한다.
 - API 경로는 내부 리뷰용 summary에는 넣을 수 있지만, 고객 본문에는 넣지 않는다.
 
-## 고위험 재랭킹
+## 민감 문의 재랭킹
 
 다음 키워드가 있으면 관련 chunk를 최상위로 올린다.
 
@@ -69,7 +69,7 @@
 - 법적, 소송, 신고, 분쟁.
 - 보안, 해킹, 취약점, 유출.
 
-고위험이면 답변 생성 자체를 막는 것이 아니라, 자동 완료/확정 표현을 막고 Discord 리뷰에서 위험도를 명확히 표시한다.
+민감 문의이면 답변 생성 자체를 막는 것이 아니라, 자동 완료/확정 표현을 막고 담당자 검토가 필요하다는 문구로 처리한다.
 
 ## 정적 컨텍스트 사용 예
 
@@ -94,4 +94,4 @@
 - 제 개인정보를 삭제해주세요.
 - 다크모드를 추가해주세요.
 
-각 질문에 대해 금지 표현, 필요한 추가 정보, high risk 여부를 함께 평가한다.
+각 질문에 대해 금지 표현, 필요한 추가 정보, 담당자 검토 필요 여부를 함께 평가한다.

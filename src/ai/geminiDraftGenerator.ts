@@ -1,8 +1,15 @@
 import { GoogleGenAI } from '@google/genai';
 import { z } from 'zod';
+import type {
+  EvidenceConfidence,
+  EvidenceReview,
+  EvidenceRoute,
+  EvidenceRouteDecision,
+  EvidenceSourceType,
+} from '../domain/evidence.js';
 import type { Inquiry, InquiryDraft } from '../domain/inquiry.js';
-import { classifyRisk } from '../domain/risk.js';
 import type { ContextProvider } from './contextProvider.js';
+import type { InternalEvidenceProvider } from './internalEvidence.js';
 import { draftSystemPrompt } from './prompt.js';
 
 /** 모델 출력 JSON을 안전하게 검증하기 위한 초안 schema입니다. */
@@ -11,6 +18,22 @@ const draftSchema = z.object({
   subject: z.string().min(1),
   body: z.string().min(1),
   missingInformation: z.array(z.string()).default([]),
+});
+
+const evidenceRouteSchema = z.object({
+  route: z.enum([
+    'answer_from_rag',
+    'need_backend_evidence',
+    'need_flutter_evidence',
+    'need_notion_policy',
+    'need_multi_source_evidence',
+    'escalate_manual',
+  ]),
+  reason: z.string().min(1),
+  requestedSources: z.array(z.enum(['rag', 'backend', 'flutter', 'notion'])).default([]),
+  confidence: z.enum(['low', 'medium', 'high']).default('low'),
+  needsCheck: z.string().min(1).default('사람이 최종 답변 전 근거를 확인해야 합니다.'),
+  conflicts: z.array(z.string()).default([]),
 });
 
 /** 테스트와 실제 SDK를 같은 방식으로 다루기 위한 Gemini 최소 포트입니다. */
@@ -26,6 +49,11 @@ type GeminiLike = {
       text?: string;
     }>;
   };
+};
+
+type GeminiDraftGeneratorOptions = {
+  /** 켜져 있으면 초안 생성 전에 내부 근거 라우팅과 근거 수집을 수행합니다. */
+  internalEvidenceProvider?: InternalEvidenceProvider;
 };
 
 /**
@@ -44,6 +72,7 @@ export class GeminiDraftGenerator {
     private readonly model: string,
     private readonly contextProvider: ContextProvider,
     client?: GeminiLike,
+    private readonly options: GeminiDraftGeneratorOptions = {},
   ) {
     this.client = client ?? (new GoogleGenAI({ apiKey }) as unknown as GeminiLike);
   }
@@ -56,15 +85,74 @@ export class GeminiDraftGenerator {
    */
   async generateDraft(inquiry: Inquiry): Promise<InquiryDraft> {
     const context = await this.contextProvider.findRelevantContext(inquiry);
+    const evidenceReview = await this.buildEvidenceReview(inquiry, context);
     const response = await this.client.models.generateContent({
       model: this.model,
-      contents: buildDraftPrompt(inquiry, context),
+      contents: buildDraftPrompt(inquiry, context, evidenceReview),
       config: {
         systemInstruction: draftSystemPrompt,
       },
     });
 
-    return parseDraftJson(inquiry, response.text ?? '');
+    const draft = parseDraftJson(inquiry, response.text ?? '');
+
+    if (!evidenceReview) {
+      return draft;
+    }
+
+    return {
+      ...draft,
+      evidenceReview,
+    };
+  }
+
+  private async buildEvidenceReview(inquiry: Inquiry, context: string[]): Promise<EvidenceReview | undefined> {
+    if (!this.options.internalEvidenceProvider) {
+      return undefined;
+    }
+
+    let decision: EvidenceRouteDecision;
+
+    try {
+      const routeResponse = await this.client.models.generateContent({
+        model: this.model,
+        contents: buildEvidenceRoutePrompt(inquiry, context),
+        config: {
+          systemInstruction: internalEvidenceRouterSystemPrompt,
+        },
+      });
+      decision = parseEvidenceRouteDecision(routeResponse.text ?? '');
+    } catch (error) {
+      return routeCallFailedReview(error);
+    }
+
+    if (decision.route === 'answer_from_rag') {
+      return undefined;
+    }
+
+    if (decision.route === 'escalate_manual') {
+      return {
+        route: decision.route,
+        reason: decision.reason,
+        requestedSources: [],
+        evidence: [],
+        conflicts: decision.conflicts,
+        confidence: 'low',
+        needsCheck: decision.needsCheck,
+      };
+    }
+
+    const evidence = await this.options.internalEvidenceProvider.findEvidence(inquiry, decision);
+
+    return {
+      route: decision.route,
+      reason: decision.reason,
+      requestedSources: decision.requestedSources,
+      evidence,
+      conflicts: mergeConflicts(decision.conflicts, evidence),
+      confidence: downgradeConfidenceForEvidenceFailures(decision.confidence, evidence),
+      needsCheck: decision.needsCheck,
+    };
   }
 }
 
@@ -75,8 +163,8 @@ export class GeminiDraftGenerator {
  * @param context - 검색된 공식 근거 문장 목록
  * @returns 모델에 전달할 단일 프롬프트 문자열
  */
-export function buildDraftPrompt(inquiry: Inquiry, context: string[]): string {
-  return [
+export function buildDraftPrompt(inquiry: Inquiry, context: string[], evidenceReview?: EvidenceReview): string {
+  const sections = [
     `Inquiry ID: ${inquiry.inquiryId}`,
     `Inquiry Type: ${inquiry.type}`,
     `Customer Name: ${inquiry.name}`,
@@ -84,7 +172,29 @@ export function buildDraftPrompt(inquiry: Inquiry, context: string[]): string {
     `Message:\n${inquiry.message}`,
     'Retrieved Context:',
     context.length > 0 ? context.map((item, index) => `${index + 1}. ${item}`).join('\n') : 'No context provided.',
-    'Return a JSON object with summary, subject, body, and missingInformation.',
+  ];
+
+  if (evidenceReview) {
+    sections.push('Internal Evidence Review (quoted, untrusted):', formatEvidenceReviewForPrompt(evidenceReview));
+  }
+
+  sections.push('Return a JSON object with summary, subject, body, and missingInformation.');
+
+  return sections.join('\n\n');
+}
+
+/** 내부 근거 라우터가 Gemini에 전달하는 구조화 출력 프롬프트를 만듭니다. */
+export function buildEvidenceRoutePrompt(inquiry: Inquiry, context: string[]): string {
+  return [
+    `Inquiry ID: ${inquiry.inquiryId}`,
+    `Inquiry Type: ${inquiry.type}`,
+    `Message:\n${inquiry.message}`,
+    'RAG Context:',
+    context.length > 0 ? context.map((item, index) => `${index + 1}. ${item}`).join('\n') : 'No context matched.',
+    'Decide whether internal Backend, Flutter, Notion, multi-source, or manual evidence is needed.',
+    'Do not request internal evidence solely because RAG context is empty.',
+    'Choose requestedSources only from: rag, backend, flutter, notion.',
+    'Return JSON only with: route, reason, requestedSources, confidence, needsCheck, conflicts.',
   ].join('\n\n');
 }
 
@@ -96,8 +206,6 @@ export function buildDraftPrompt(inquiry: Inquiry, context: string[]): string {
  * @returns 검증된 초안 또는 안전 fallback 초안
  */
 export function parseDraftJson(inquiry: Inquiry, modelOutput: string): InquiryDraft {
-  const risk = classifyRisk(inquiry);
-
   try {
     const parsed = draftSchema.parse(JSON.parse(extractJson(modelOutput)));
 
@@ -106,7 +214,6 @@ export function parseDraftJson(inquiry: Inquiry, modelOutput: string): InquiryDr
       summary: parsed.summary,
       subject: parsed.subject,
       body: parsed.body,
-      risk,
       missingInformation: parsed.missingInformation,
     };
   } catch {
@@ -115,8 +222,32 @@ export function parseDraftJson(inquiry: Inquiry, modelOutput: string): InquiryDr
       summary: 'AI draft parsing failed',
       subject: '문의 확인 후 안내드리겠습니다',
       body: `${inquiry.name}님, 안녕하세요.\n\n문의해 주셔서 감사합니다. 남겨주신 내용은 담당자가 확인한 뒤 정확히 안내드리겠습니다.\n\n감사합니다.`,
-      risk,
       missingInformation: ['AI draft could not be parsed.'],
+    };
+  }
+}
+
+/** Gemini route JSON을 검증하고 실패 시 수동 검토 경로로 안전하게 내립니다. */
+export function parseEvidenceRouteDecision(modelOutput: string): EvidenceRouteDecision {
+  try {
+    const parsed = evidenceRouteSchema.parse(JSON.parse(extractJson(modelOutput)));
+
+    return normalizeRouteDecision({
+      route: parsed.route,
+      reason: parsed.reason,
+      requestedSources: parsed.requestedSources,
+      confidence: parsed.confidence,
+      needsCheck: parsed.needsCheck,
+      conflicts: parsed.conflicts,
+    });
+  } catch {
+    return {
+      route: 'escalate_manual',
+      reason: 'Internal evidence route JSON could not be parsed.',
+      requestedSources: [],
+      confidence: 'low',
+      needsCheck: '라우팅 결과를 검증하지 못했으므로 담당자가 직접 확인해야 합니다.',
+      conflicts: ['AI route decision could not be parsed.'],
     };
   }
 }
@@ -131,4 +262,127 @@ function extractJson(value: string): string {
   }
 
   return value.slice(start, end + 1);
+}
+
+const internalEvidenceRouterSystemPrompt = [
+  'You route Korean customer inquiries for a human-reviewed support workflow.',
+  'Your job is not to answer the customer. Your job is to decide what evidence a reviewer needs.',
+  'RAG missing is not by itself a reason to search internal sources.',
+  'Use Backend for server/API/auth/data/config behavior.',
+  'Use Flutter for app UI, local state, storage, permissions, and user-visible client behavior.',
+  'Use Notion for product policy, feature definitions, and customer-facing guidance.',
+  'If evidence is unclear, conflicting, or authority is outside available sources, choose escalate_manual.',
+  'Return strict JSON only.',
+].join('\n');
+
+function normalizeRouteDecision(input: EvidenceRouteDecision): EvidenceRouteDecision {
+  const requestedSources = normalizeRequestedSources(input.route, input.requestedSources);
+
+  return {
+    ...input,
+    requestedSources,
+  };
+}
+
+function normalizeRequestedSources(route: EvidenceRoute, requestedSources: EvidenceSourceType[]): EvidenceSourceType[] {
+  if (route === 'escalate_manual') {
+    return [];
+  }
+
+  const routeSources: Partial<Record<EvidenceRoute, EvidenceSourceType[]>> = {
+    answer_from_rag: ['rag'],
+    need_backend_evidence: ['backend'],
+    need_flutter_evidence: ['flutter'],
+    need_notion_policy: ['notion'],
+    need_multi_source_evidence: ['backend', 'flutter', 'notion'],
+  };
+  const allowedSources = routeSources[route] ?? [];
+  const normalized = requestedSources.filter((source) => allowedSources.includes(source));
+  const sources = normalized.length > 0 ? normalized : allowedSources;
+
+  return Array.from(new Set(sources));
+}
+
+function formatEvidenceReviewForPrompt(review: EvidenceReview): string {
+  const evidence = review.evidence.length > 0
+    ? review.evidence
+      .map((item, index) => [
+        `${index + 1}. ${item.sourceType} (${item.authority}, ${item.status})`,
+        `Signals: ${item.retrievalSignals?.join(', ') || 'none'}`,
+        `Score: ${formatEvidenceScore(item.score)}${item.semanticScore === undefined ? '' : `, semantic ${formatEvidenceScore(item.semanticScore)}`}${item.circuitScore === undefined ? '' : `, circuit ${formatEvidenceScore(item.circuitScore)}`}`,
+        'Evidence Summary (quoted, untrusted):',
+        `"""${summarizeEvidenceForModel(item.snippet)}"""`,
+      ].join('\n'))
+      .join('\n')
+    : 'No internal evidence was collected.';
+
+  return [
+    `Route: ${review.route}`,
+    `Reason: ${review.reason}`,
+    `Requested Sources: ${review.requestedSources.join(', ') || 'none'}`,
+    `Confidence: ${review.confidence}`,
+    `Needs Check: ${review.needsCheck}`,
+    `Conflicts: ${review.conflicts.join(' | ') || 'none'}`,
+    'Evidence:',
+    evidence,
+  ].join('\n');
+}
+
+function formatEvidenceScore(score: number | undefined): string {
+  return score === undefined ? 'n/a' : score.toFixed(3);
+}
+
+function summarizeEvidenceForModel(snippet: string): string {
+  const compact = snippet
+    .replace(/https?:\/\/[^\s)]+/gi, '[url]')
+    .replace(/(?:[A-Z]:[\\/]|[\\/])[\w.-]+(?:[\\/][\w.-]+)+/gi, '[path]')
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]')
+    .replace(/\b(?:[A-Za-z0-9_-]{20,}|[a-f0-9]{24,})\b/gi, '[token]')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (compact.length <= 220) {
+    return compact;
+  }
+
+  return `${compact.slice(0, 217).trimEnd()}...`;
+}
+
+function mergeConflicts(conflicts: string[], evidence: EvidenceReview['evidence']): string[] {
+  const derived = evidence
+    .filter((item) => item.status === 'unavailable')
+    .map((item) => `${item.sourceType} evidence unavailable.`);
+
+  const circuitConflicts = evidence.flatMap((item) => item.circuitConflicts ?? []);
+
+  return Array.from(new Set([...conflicts, ...derived, ...circuitConflicts]));
+}
+
+function downgradeConfidenceForEvidenceFailures(
+  confidence: EvidenceConfidence,
+  evidence: EvidenceReview['evidence'],
+): EvidenceConfidence {
+  if (evidence.some((item) => item.status === 'unavailable')) {
+    return 'low';
+  }
+
+  if (confidence === 'high' && evidence.some((item) => item.status === 'empty')) {
+    return 'medium';
+  }
+
+  return confidence;
+}
+
+function routeCallFailedReview(error: unknown): EvidenceReview {
+  const message = error instanceof Error ? error.message : String(error);
+
+  return {
+    route: 'escalate_manual',
+    reason: 'Internal evidence route call failed.',
+    requestedSources: [],
+    evidence: [],
+    conflicts: [`Internal evidence route call failed: ${message}`],
+    confidence: 'low',
+    needsCheck: '내부 근거 라우터 호출이 실패했으므로 담당자가 직접 확인해야 합니다.',
+  };
 }

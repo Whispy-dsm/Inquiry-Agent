@@ -18,7 +18,6 @@ describe('InquiryWorkflow', () => {
         summary: '서비스 문의',
         subject: '문의 답변드립니다',
         body: '안녕하세요.',
-        risk: { level: 'low', reasons: ['faq', 'policy'] },
         missingInformation: [],
       }),
     };
@@ -44,10 +43,9 @@ describe('InquiryWorkflow', () => {
     );
     expect(sheets.updateManagedFields).toHaveBeenCalledWith(baseInquiry.rowNumber, {
       status: 'pending_review',
-      risk_level: 'low',
-      risk_reasons: 'faq | policy',
       draft_subject: '문의 답변드립니다',
       draft_body: '안녕하세요.',
+      evidence_feedback_refs: '',
       discord_channel_id: 'channel_1',
       discord_message_id: 'message_1',
       error_message: '',
@@ -68,7 +66,6 @@ describe('InquiryWorkflow', () => {
         summary: '서비스 문의',
         subject: '문의 답변드립니다',
         body: '안녕하세요.',
-        risk: { level: 'low', reasons: [] },
         missingInformation: [],
       }),
     };
@@ -156,7 +153,6 @@ describe('InquiryWorkflow', () => {
         summary: '서비스 문의',
         subject: '문의 답변드립니다',
         body: '안녕하세요.',
-        risk: { level: 'low', reasons: [] },
         missingInformation: [],
       }),
     };

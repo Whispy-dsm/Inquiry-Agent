@@ -1,352 +1,209 @@
-# Inquiry Agent 운영 플로우 및 `.env` 설정 가이드
+# 운영 플로우 및 env 설정 가이드
 
-이 문서는 현재 저장소 구현 기준으로 Inquiry Agent가 어떻게 동작하는지와 `.env`를 어떻게 채워야 하는지를 한국어로 정리한 운영 가이드입니다.
+## 문의 처리 플로우
 
-## 1. 전체 작동 플로우
+1. Google Sheet 또는 webhook으로 문의가 들어온다.
+2. worker가 `docs/rag` 문서를 읽어 기본 RAG context를 구성한다.
+3. `ENABLE_INTERNAL_EVIDENCE_ROUTER=true`이면 Gemini가 답변 생성 전에 문의를 라우팅한다.
+4. 라우터가 내부 근거가 필요하다고 판단할 때만 source별 evidence provider를 호출한다.
+5. Backend/Flutter 근거는 GitHub code search로 찾는다.
+6. Notion 정책/기능 정의 근거는 Notion API로 찾는다.
+7. 찾은 근거와 초안 답변을 Discord 리뷰 카드에 표시한다.
 
-현재 구조는 **Google Form 제출 -> Google Apps Script trigger -> 봇 webhook -> Discord 승인 -> Gmail 발송 -> Google Sheet 상태 기록** 순서로 동작합니다.
+RAG가 비어 있다는 이유만으로 GitHub나 Notion을 무조건 검색하지 않는다. 실제 시스템 동작, 앱 UX, 기능 정의, 정책 확인이 답변을 좌우할 때만 내부 근거 검색을 수행한다.
 
-### Step 1. 사용자가 Google Form 제출
-
-- 사용자가 Whispy 문의 폼을 제출합니다.
-- 응답은 연결된 Google Sheet의 응답 탭에 새 row로 저장됩니다.
-- 현재 시트 탭 이름은 `설문지 응답 시트1`을 사용하도록 맞춰져 있습니다.
-
-### Step 2. Apps Script가 form submit 이벤트를 감지
-
-- Google Sheet에 설치한 `onFormSubmit` 트리거가 실행됩니다.
-- Apps Script는 새로 들어온 row 번호와 시트 정보, spreadsheet id를 우리 봇의 webhook으로 전송합니다.
-- 이 단계에서는 Discord로 직접 알림을 보내지 않습니다. Discord 검토 카드는 봇이 직접 올립니다.
-
-### Step 3. 봇 webhook이 새 row를 처리
-
-- 봇은 `POST /webhooks/google-form-submit` 요청을 받습니다.
-- `X-Webhook-Secret` 헤더가 `.env`의 `WEBHOOK_SECRET`과 일치하는지 확인합니다.
-- payload의 `spreadsheetId`, `sheetName`, `rowNumber`를 검증합니다.
-- 유효한 요청이면 해당 `rowNumber` 한 건만 Google Sheets API로 읽습니다.
-
-### Step 4. Google Sheet row를 내부 문의 모델로 변환
-
-봇은 실제 Whispy 폼 컬럼을 기준으로 row를 해석합니다.
-
-- `타임스탬프` -> 제출 시각
-- `문의 유형을 선택해 주세요` -> 내부 문의 유형
-- `답변 받으실 이메일 주소를 입력해주세요.` -> 답장 받을 이메일
-- 선택된 문의 유형에 맞는 본문 컬럼 -> 문의 본문
-- `status` -> worker 관리 상태
-- `inquiry_id`가 비어 있으면 `inq_<rowNumber>` 형식으로 생성
-
-### Step 5. 신규 문의인지 확인
-
-- `status`가 비어 있거나 `new`이면 처리합니다.
-- 이미 `pending_review`, `sent`, `rejected`, `failed` 같은 상태면 다시 처리하지 않습니다.
-
-### Step 6. Gemini가 답변 초안 생성
-
-- Gemini가 문의 내용을 바탕으로 이메일 제목과 본문 초안을 생성합니다.
-- 동시에 위험도도 계산합니다.
-- `OTHER`, 삭제 요청, 결제/환불, 법적 이슈, 보안 관련 내용은 high risk로 표시될 수 있습니다.
-- Gemini 응답 파싱이 실패하면 fallback 초안으로 대체합니다.
-
-### Step 7. Discord에 검토 카드 생성
-
-- 봇이 `DISCORD_INQUIRY_CHANNEL_ID` 채널에 검토 카드를 올립니다.
-- 카드에는 문의 ID, 위험도, 문의 유형, 고객 이메일, 요약, 이메일 제목/본문 초안이 포함됩니다.
-- 버튼은 `Approve & Send`, `Edit`, `Reject` 세 가지입니다.
-
-### Step 8. CX 담당자가 Discord에서 처리
-
-- `Approve & Send`
-  - 초안 그대로 이메일 발송
-- `Edit`
-  - 제목/본문을 수정한 뒤 이메일 발송
-- `Reject`
-  - 이메일은 보내지 않고 시트 상태만 `rejected`로 변경
-
-### Step 9. Gmail 발송
-
-- `DRY_RUN_EMAIL=true`
-  - 실제 메일은 보내지 않습니다.
-  - `gmail_message_id`에 `dry_...` 형태의 값만 기록합니다.
-- `DRY_RUN_EMAIL=false`
-  - Gmail API로 실제 메일을 발송합니다.
-
-### Step 10. Google Sheet 상태 업데이트
-
-worker는 처리 상태를 시트에 기록합니다.
-
-- `new`
-- `drafting`
-- `pending_review`
-- `sending`
-- `sent`
-- `rejected`
-- `failed`
-
-함께 기록되는 값:
-
-- `inquiry_id`
-- `risk_level`
-- `risk_reasons`
-- `discord_channel_id`
-- `discord_message_id`
-- `draft_subject`
-- `draft_body`
-- `final_subject`
-- `final_body`
-- `handled_by`
-- `handled_at`
-- `gmail_message_id`
-- `error_message`
-
-## 2. `.env` 설정 항목
-
-현재 코드에서 읽는 환경변수는 아래와 같습니다.
+## 최소 env 예시
 
 ```env
-NODE_ENV=development
-LOG_LEVEL=info
-
-GOOGLE_SHEET_ID=replace-with-google-sheet-id
-GOOGLE_SHEET_NAME=설문지 응답 시트1
+GOOGLE_SHEET_ID=replace-with-sheet-id
+GOOGLE_SHEET_NAME=replace-with-sheet-name
 GOOGLE_OAUTH_CLIENT_ID=replace-with-google-oauth-client-id
 GOOGLE_OAUTH_CLIENT_SECRET=replace-with-google-oauth-client-secret
 GOOGLE_OAUTH_REFRESH_TOKEN=replace-with-google-oauth-refresh-token
 
-DISCORD_BOT_TOKEN=replace-with-discord-bot-token
+DISCORD_BOT_TOKEN=replace-with-discord-token
 DISCORD_INQUIRY_CHANNEL_ID=replace-with-discord-channel-id
 DISCORD_REVIEW_POST_INTERVAL_MS=1000
 
 GEMINI_API_KEY=replace-with-gemini-api-key
 GEMINI_MODEL=gemini-2.5-flash-lite
 
+ENABLE_INTERNAL_EVIDENCE_ROUTER=true
+
+ENABLE_INTERNAL_EVIDENCE_GITHUB_SEARCH=true
+INTERNAL_EVIDENCE_GITHUB_TOKEN=replace-with-github-read-token
+INTERNAL_EVIDENCE_GITHUB_API_BASE_URL=
+INTERNAL_EVIDENCE_GITHUB_BACKEND_REPOS=owner/backend-repo
+INTERNAL_EVIDENCE_GITHUB_FLUTTER_REPOS=owner/flutter-repo
+
+ENABLE_INTERNAL_EVIDENCE_NOTION_SEARCH=true
+INTERNAL_EVIDENCE_NOTION_TOKEN=replace-with-notion-integration-token
+INTERNAL_EVIDENCE_NOTION_API_BASE_URL=
+INTERNAL_EVIDENCE_NOTION_VERSION=2026-03-11
+INTERNAL_EVIDENCE_NOTION_PAGE_IDS=page-id-1,page-id-2
+
+ENABLE_INTERNAL_EVIDENCE_EMBEDDING_RERANK=false
+INTERNAL_EVIDENCE_EMBEDDING_MODEL=text-embedding-004
+INTERNAL_EVIDENCE_EMBEDDING_MAX_CANDIDATES=8
+
+ENABLE_KNOWLEDGE_CIRCUIT=false
+KNOWLEDGE_CIRCUIT_DB_PATH=./data/knowledge-circuit.sqlite
+KNOWLEDGE_CIRCUIT_MAX_HOPS=1
+KNOWLEDGE_CIRCUIT_MAX_NODES=12
+KNOWLEDGE_CIRCUIT_FEEDBACK_TTL_DAYS=90
+KNOWLEDGE_CIRCUIT_MAX_FEEDBACK_ROWS=50000
+
 GMAIL_FROM_EMAIL=replace-with-sender@example.com
 GMAIL_FROM_NAME=Support Team
 
 POLL_INTERVAL_MS=600000
-ENABLE_FALLBACK_POLLING=true
+ENABLE_FALLBACK_POLLING=false
 WEBHOOK_PORT=3000
 WEBHOOK_SECRET=replace-with-shared-webhook-secret
 DRY_RUN_EMAIL=true
 ```
 
-## 3. `.env` 항목별 설명
+## 내부 근거 설정
 
-### 공통 실행 설정
+### `ENABLE_INTERNAL_EVIDENCE_ROUTER`
 
-`NODE_ENV`
+- `true`이면 Gemini 초안 생성 전에 문의 유형을 판단한다.
+- 기본값은 `false`다.
+- 라우터가 요청한 source만 조회한다.
 
-- 보통 `development`, `test`, `production` 중 하나를 사용합니다.
-- 운영 서버에서는 일반적으로 `production`을 사용합니다.
+### GitHub 설정
 
-`LOG_LEVEL`
+`ENABLE_INTERNAL_EVIDENCE_GITHUB_SEARCH`
 
-- `trace`, `debug`, `info`, `warn`, `error` 중 하나입니다.
-- 운영에서는 `info` 또는 `warn` 정도가 보통 무난합니다.
+- `true`이면 Backend/Flutter source에 대해 GitHub code search를 실행한다.
+- 기본값은 `false`다.
 
-### Google Sheets / Google OAuth
+`INTERNAL_EVIDENCE_GITHUB_TOKEN`
 
-`GOOGLE_SHEET_ID`
+- GitHub code search와 contents API fetch에 사용할 read-only token이다.
+- private repo를 검색하려면 해당 repo read 권한이 필요하다.
 
-- 원본 Google Spreadsheet URL의 `/d/.../edit` 사이 값입니다.
-- 다운로드한 `.xlsx` 파일 경로가 아닙니다.
+`INTERNAL_EVIDENCE_GITHUB_API_BASE_URL`
 
-예시:
+- 기본값은 `https://api.github.com`이다.
+- GitHub Enterprise를 쓰는 경우에만 설정한다.
 
-```text
-https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz/edit#gid=0
-```
+`INTERNAL_EVIDENCE_GITHUB_BACKEND_REPOS`
 
-위 주소라면:
+- Backend 검색 대상 repo 목록이다.
+- 쉼표로 구분한 `owner/repo` 형식이다.
+- 예: `whispy/backend,whispy/admin-api`
 
-```env
-GOOGLE_SHEET_ID=1AbCdEfGhIjKlMnOpQrStUvWxYz
-```
+`INTERNAL_EVIDENCE_GITHUB_FLUTTER_REPOS`
 
-`GOOGLE_SHEET_NAME`
+- Flutter 검색 대상 repo 목록이다.
+- 쉼표로 구분한 `owner/repo` 형식이다.
 
-- Google Spreadsheet 안의 실제 탭 이름입니다.
-- 현재 Whispy 폼 기준으로 `설문지 응답 시트1`로 맞춰져 있습니다.
-- 탭 이름이 달라지면 이 값도 같이 바꿔야 합니다.
+GitHub query에는 고객 문의 원문, 이름, 이메일, 계정 ID 같은 raw token을 넣지 않는다. 라우터 결과를 `auth`, `login`, `session`, `policy` 같은 고정 taxonomy로 바꿔 검색한다.
 
-`GOOGLE_OAUTH_CLIENT_ID`
+검색 결과에 contents API URL이 있으면 파일 본문을 가져와 메모리에서 AST/symbol 분석을 실행한다. 로컬 repo mount는 필요 없다.
 
-- Google Cloud Console에서 만든 OAuth client id입니다.
+### Notion 설정
 
-`GOOGLE_OAUTH_CLIENT_SECRET`
+`ENABLE_INTERNAL_EVIDENCE_NOTION_SEARCH`
 
-- 위 OAuth client에 대응하는 secret입니다.
+- `true`이면 Notion API provider를 활성화한다.
+- 기본값은 `false`다.
 
-`GOOGLE_OAUTH_REFRESH_TOKEN`
+`INTERNAL_EVIDENCE_NOTION_TOKEN`
 
-- Sheets 읽기/쓰기와 Gmail 발송 권한을 가진 사용자 refresh token입니다.
-- 이 계정은 대상 Google Sheet에 접근 가능해야 하고, `GMAIL_FROM_EMAIL`로 메일을 보낼 수 있어야 합니다.
+- Notion integration token이다.
+- 검색할 페이지나 데이터베이스가 해당 integration에 공유되어 있어야 한다.
 
-필요 OAuth scope:
+`INTERNAL_EVIDENCE_NOTION_API_BASE_URL`
 
-- `https://www.googleapis.com/auth/spreadsheets`
-- `https://www.googleapis.com/auth/gmail.send`
+- 기본값은 `https://api.notion.com`이다.
+- 일반적으로 비워둔다.
 
-### Discord
+`INTERNAL_EVIDENCE_NOTION_VERSION`
 
-`DISCORD_BOT_TOKEN`
+- Notion REST API version header다.
+- 기본값은 `2026-03-11`이다.
 
-- Discord Developer Portal에서 발급받은 봇 토큰입니다.
+`INTERNAL_EVIDENCE_NOTION_PAGE_IDS`
 
-`DISCORD_INQUIRY_CHANNEL_ID`
+- 권장 운영 설정이다.
+- 정책/기능 정의/FAQ 페이지 ID를 쉼표로 넣는다.
+- 값이 있으면 `/v1/search`에 의존하지 않고 지정한 페이지를 직접 조회한다.
+- 값이 없으면 safe taxonomy query로 `/v1/search`를 호출한 뒤 검색된 페이지의 block children을 읽는다.
 
-- 검토 카드를 올릴 Discord 채널 ID입니다.
-- 이 채널에 봇이 메시지를 보낼 권한이 있어야 합니다.
+Notion API provider는 페이지 본문을 로컬에 저장하지 않는다. API 응답을 메모리에서 점수화하고, 실패하면 worker를 죽이지 않고 `unavailable` evidence로 표시한다.
 
-`DISCORD_REVIEW_POST_INTERVAL_MS`
+### Embedding rerank
 
-- Discord 검토 카드를 하나 올린 뒤 다음 카드를 올리기 전 기다릴 최소 간격입니다.
-- 기본값은 `1000`입니다.
-- Discord 429가 계속 발생하면 `1500` 또는 `2000`처럼 늘려서 전송 속도를 낮출 수 있습니다.
+`ENABLE_INTERNAL_EVIDENCE_EMBEDDING_RERANK`
 
-### Gemini
+- `true`이면 수집된 evidence 후보를 Gemini embedding으로 재정렬한다.
+- 기본값은 `false`다.
 
-`GEMINI_API_KEY`
+`INTERNAL_EVIDENCE_EMBEDDING_MODEL`
 
-- Gemini API 호출용 키입니다.
+- 기본값은 `text-embedding-004`다.
 
-`GEMINI_MODEL`
+`INTERNAL_EVIDENCE_EMBEDDING_MAX_CANDIDATES`
 
-- 사용할 Gemini 모델명입니다.
-- 기본값은 `gemini-2.5-flash-lite`입니다.
+- semantic rerank 대상 후보 수다.
+- 기본값은 `8`이다.
 
-### Gmail 발송
+### Knowledge circuit 설정
 
-`GMAIL_FROM_EMAIL`
+`ENABLE_KNOWLEDGE_CIRCUIT`
 
-- 실제 발신자로 사용할 이메일 주소입니다.
-- Google OAuth 계정이 이 주소로 메일을 보낼 수 있어야 합니다.
+- `true`이면 evidence 후보를 SQLite metadata graph에 node로 기록하고, 기존 feedback/edge weight를 evidence score에 반영한다.
+- 기본값은 `false`다.
+- 내부 근거 라우터가 꺼져 있으면 circuit도 실행되지 않는다.
 
-`GMAIL_FROM_NAME`
+`KNOWLEDGE_CIRCUIT_DB_PATH`
 
-- 메일 발신자 이름입니다.
+- SQLite 파일 경로다.
+- 로컬 기본값은 `./data/knowledge-circuit.sqlite`다.
+- Docker 기본값은 `/app/data/knowledge-circuit.sqlite`이며 compose/stack에서 `/app/data`를 volume으로 유지한다.
 
-### Webhook / 실행 제어
+`KNOWLEDGE_CIRCUIT_MAX_HOPS`
 
-`POLL_INTERVAL_MS`
+- 선택된 evidence node에서 저장된 edge를 반영할지 정하는 값이다.
+- `0`이면 edge scoring을 끄고, `1`이면 직접 연결된 저장 edge만 반영한다.
+- 현재 기본값은 `1`이다.
 
-- fallback polling을 켰을 때 사용할 간격입니다.
-- 현재 webhook 방식이 기본이라, polling을 끈 상태에서는 사실상 예비값입니다.
+`KNOWLEDGE_CIRCUIT_MAX_NODES`
 
-`ENABLE_FALLBACK_POLLING`
+- 한 요청에서 circuit metadata로 처리할 최대 evidence node 수다.
+- 기본값은 `12`다.
 
-- `false`
-  - webhook 이벤트가 들어올 때만 처리
-- `true`
-  - 기본값
-  - webhook 외에 polling도 같이 수행
-  - 현재 권장값은 `true`입니다
-  - Apps Script 누락이나 일시 장애 복구 용도로 10분마다 신규 row를 다시 확인합니다
+`KNOWLEDGE_CIRCUIT_FEEDBACK_TTL_DAYS`
 
-`WEBHOOK_PORT`
+- feedback row 보존 기간이다.
+- 기본값은 `90`일이다.
 
-- 봇이 Google Apps Script webhook을 받을 포트입니다.
-- 직접 외부 포트로 열 수도 있고, nginx 뒤에서 `localhost:3000`으로만 둘 수도 있습니다.
+`KNOWLEDGE_CIRCUIT_MAX_FEEDBACK_ROWS`
 
-`WEBHOOK_SECRET`
+- feedback row 최대 보존 개수다.
+- 기본값은 `50000`이다.
 
-- Apps Script와 봇이 공유하는 비밀 문자열입니다.
-- Apps Script는 이 값을 `X-Webhook-Secret` 헤더로 보냅니다.
-- 충분히 긴 랜덤 문자열을 쓰는 편이 좋습니다.
+SQLite에는 source type, source ref, title, title/source 기반 topic과 symbol, content hash, 명시적 edge relation, Discord 검토 feedback weight만 저장한다. 고객 문의 원문, evidence snippet token, Notion 원문 전체, GitHub 파일 전체, Gemini prompt 전체는 저장하지 않는다. Feedback은 content hash와 함께 기록되어 원본 문서나 코드가 바뀌면 이전 승인/거절 weight가 새 content에 적용되지 않는다.
 
-`DRY_RUN_EMAIL`
+## 제거된 설정
 
-- `true`
-  - 실제 메일 발송 없이 동작 검증만 함
-- `false`
-  - Gmail API로 실제 메일 발송
-
-## 4. Google Apps Script와 `.env`의 연결 관계
-
-아래 두 값은 반드시 서로 맞아야 합니다.
-
-- Apps Script의 `BOT_WEBHOOK_URL` 또는 `WEBHOOK_URL`
-- 서버의 공개 URL
-
-- Apps Script의 `BOT_WEBHOOK_SECRET` 또는 `WEBHOOK_SECRET`
-- `.env`의 `WEBHOOK_SECRET`
-
-예:
+아래 설정은 더 이상 사용하지 않는다.
 
 ```env
-WEBHOOK_PORT=3000
-WEBHOOK_SECRET=replace-with-a-long-random-secret
+INTERNAL_EVIDENCE_BACKEND_PATH=
+INTERNAL_EVIDENCE_FLUTTER_PATH=
+INTERNAL_EVIDENCE_NOTION_PATH=
+INTERNAL_EVIDENCE_GITHUB_NOTION_REPOS=
 ```
 
-Apps Script:
+Backend/Flutter는 GitHub repo 설정을 사용하고, Notion은 Notion API 설정을 사용한다.
 
-```javascript
-const WEBHOOK_URL = 'https://your-domain.com/webhooks/google-form-submit';
-const WEBHOOK_SECRET = 'replace-with-a-long-random-secret';
-```
+## Webhook / fallback polling 기준
 
-## 5. EC2 배포 기준 권장 구성
-
-EC2에 올릴 경우 보통 이렇게 구성합니다.
-
-```text
-Google Form
--> Google Sheet
--> Apps Script onFormSubmit
--> https://your-domain.com/webhooks/google-form-submit
--> nginx
--> Node app on localhost:3000
--> Discord / Gemini / Gmail / Google Sheets API
-```
-
-권장 사항:
-
-- Node 앱은 `localhost:3000`
-- 외부 공개는 nginx의 `443`
-- SSL은 Let's Encrypt
-- 프로세스 관리는 `pm2` 또는 `systemd`
-- 보안그룹은 `22`, `80`, `443`만 외부 오픈
-- 앱 포트 `3000`은 외부 직접 오픈하지 않는 편이 좋음
-
-## 6. 첫 실행 체크리스트
-
-### 안전한 첫 실행
-
-1. `.env`에서 `DRY_RUN_EMAIL=true`
-2. `ENABLE_FALLBACK_POLLING=true`
-3. `POLL_INTERVAL_MS=600000`
-4. `WEBHOOK_SECRET` 설정
-5. Apps Script 트리거 설정
-6. 봇 서버를 공개 URL로 실행
-7. 테스트 폼 제출
-8. Discord 검토 카드 생성 확인
-9. `Approve` 클릭
-10. Google Sheet 상태가 `sent`로 바뀌는지 확인
-11. `gmail_message_id`가 `dry_...`로 기록되는지 확인
-
-### 실제 발송 전 확인
-
-1. 수신 이메일을 내부 테스트 주소로 변경
-2. `DRY_RUN_EMAIL=false`
-3. 한 건만 제출
-4. 실제 메일 1회 발송 확인
-5. 재클릭 시 중복 발송이 없는지 확인
-
-## 7. 자주 헷갈리는 포인트
-
-`GOOGLE_SHEET_ID`는 `.xlsx` 파일 경로가 아닙니다.
-
-- 반드시 원본 Google Spreadsheet id를 넣어야 합니다.
-
-Apps Script는 `localhost`를 호출할 수 없습니다.
-
-- EC2, Cloud Run, Railway, ngrok 같은 공개 URL이 필요합니다.
-
-Discord 검토 카드와 Apps Script Discord 알림은 별개입니다.
-
-- 현재 구조에서는 Apps Script가 Discord로 직접 알릴 필요가 없습니다.
-- Apps Script는 봇 webhook만 호출하고, Discord 카드는 봇이 생성합니다.
-
-`완료 여부`는 폼 응답 컬럼이고 worker 상태 컬럼이 아닙니다.
-
-- worker 상태는 `status` 컬럼을 별도로 사용합니다.
+- 기본 운영은 Google Apps Script webhook이 새 row 한 건만 worker에 전달하는 방식이다.
+- `ENABLE_FALLBACK_POLLING=false`가 기본값이다.
+- fallback polling은 webhook 장애 복구가 필요하고, 과거 blank-status row가 정리되어 있을 때만 켠다.
+- `완료 여부=TRUE`인 row는 이미 처리된 row로 보고 신규 Gemini 초안 생성 대상에서 제외한다.
+- `완료 여부`는 Google Form 응답 컬럼이고 worker의 상태 컬럼은 아니다. worker 상태는 계속 `status` 컬럼에 기록한다.

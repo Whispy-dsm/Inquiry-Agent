@@ -10,6 +10,23 @@ For issue or PR work, create the tag after the issue or PR scope is verified and
 Do not use project names, branch names, issue numbers, or PR numbers as release tags.
 Use issue and PR numbers in branch names, commit messages, and PR text instead.
 
+## Commit Scope Rule
+
+Split commits by reviewable concern. Do not put behavior changes, operational
+documentation, repository hygiene, and agent task-memory updates into one commit
+just because they were produced in the same working session.
+
+Recommended split:
+
+- Behavior fix or feature implementation with its closest tests.
+- User-facing or operator-facing documentation updates.
+- Repository hygiene such as `.gitignore`, generated-output ignores, or tooling config.
+- Agent process memory such as `tasks/lessons.md` or task-log-only updates.
+
+Keep tests with the behavior they prove unless the task is explicitly test-only.
+Before committing multiple changed files, inspect `git diff --stat` and decide
+whether a reviewer would want to accept or revert each concern independently.
+
 ## 브랜치 포맷
 
 ```text

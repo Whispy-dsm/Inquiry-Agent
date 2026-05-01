@@ -2,7 +2,12 @@ import { google } from 'googleapis';
 import pino from 'pino';
 import { MarkdownDirectoryContextProvider } from './ai/contextProvider.js';
 import { GeminiDraftGenerator } from './ai/geminiDraftGenerator.js';
+import { createInternalEvidenceProvider } from './ai/internalEvidence.js';
+import type { InternalEvidenceProvider } from './ai/internalEvidence.js';
+import { KnowledgeCircuitService } from './ai/knowledgeCircuit.js';
+import { SqliteKnowledgeCircuitStore } from './ai/knowledgeCircuitStore.js';
 import { loadEnv } from './config/env.js';
+import type { Env } from './config/env.js';
 import { DiscordReviewBot } from './discord/discordBot.js';
 import { handleEditSubmitSend, handleReviewButton } from './discord/interactionHandlers.js';
 import { GmailClient } from './email/gmailClient.js';
@@ -41,6 +46,31 @@ type WorkerAppDeps = {
   setIntervalFn?: typeof setInterval;
 };
 
+type InternalEvidenceEnv = Pick<
+  Env,
+  | 'ENABLE_INTERNAL_EVIDENCE_ROUTER'
+  | 'ENABLE_INTERNAL_EVIDENCE_GITHUB_SEARCH'
+  | 'INTERNAL_EVIDENCE_GITHUB_TOKEN'
+  | 'INTERNAL_EVIDENCE_GITHUB_API_BASE_URL'
+  | 'INTERNAL_EVIDENCE_GITHUB_BACKEND_REPOS'
+  | 'INTERNAL_EVIDENCE_GITHUB_FLUTTER_REPOS'
+  | 'ENABLE_INTERNAL_EVIDENCE_NOTION_SEARCH'
+  | 'INTERNAL_EVIDENCE_NOTION_TOKEN'
+  | 'INTERNAL_EVIDENCE_NOTION_API_BASE_URL'
+  | 'INTERNAL_EVIDENCE_NOTION_VERSION'
+  | 'INTERNAL_EVIDENCE_NOTION_PAGE_IDS'
+  | 'ENABLE_INTERNAL_EVIDENCE_EMBEDDING_RERANK'
+  | 'INTERNAL_EVIDENCE_EMBEDDING_MODEL'
+  | 'INTERNAL_EVIDENCE_EMBEDDING_MAX_CANDIDATES'
+  | 'ENABLE_KNOWLEDGE_CIRCUIT'
+  | 'KNOWLEDGE_CIRCUIT_DB_PATH'
+  | 'KNOWLEDGE_CIRCUIT_MAX_HOPS'
+  | 'KNOWLEDGE_CIRCUIT_MAX_NODES'
+  | 'KNOWLEDGE_CIRCUIT_FEEDBACK_TTL_DAYS'
+  | 'KNOWLEDGE_CIRCUIT_MAX_FEEDBACK_ROWS'
+  | 'GEMINI_API_KEY'
+>;
+
 /**
  * worker를 시작하고 최초 polling 및 주기 polling을 등록하는 작은 app 객체를 만듭니다.
  *
@@ -68,6 +98,66 @@ export function createWorkerApp(deps: WorkerAppDeps) {
       deps.logger.info('Inquiry agent worker started');
     },
   };
+}
+
+/**
+ * 환경변수 설정에 따라 내부 근거 provider를 만들거나 비활성 상태를 유지합니다.
+ *
+ * @remarks
+ * 기본값은 비활성입니다. 켜진 경우에도 개별 경로가 없으면 provider가 unavailable 근거로 fail-closed합니다.
+ */
+export function createInternalEvidenceProviderFromEnv(
+  env: InternalEvidenceEnv,
+  knowledgeCircuit?: KnowledgeCircuitService,
+): InternalEvidenceProvider | undefined {
+  if (!env.ENABLE_INTERNAL_EVIDENCE_ROUTER) {
+    return undefined;
+  }
+
+  const resolvedKnowledgeCircuit = knowledgeCircuit ?? createKnowledgeCircuitFromEnv(env);
+
+  return createInternalEvidenceProvider({
+    github: {
+      enabled: env.ENABLE_INTERNAL_EVIDENCE_GITHUB_SEARCH,
+      token: env.INTERNAL_EVIDENCE_GITHUB_TOKEN,
+      apiBaseUrl: env.INTERNAL_EVIDENCE_GITHUB_API_BASE_URL,
+      backendRepos: env.INTERNAL_EVIDENCE_GITHUB_BACKEND_REPOS,
+      flutterRepos: env.INTERNAL_EVIDENCE_GITHUB_FLUTTER_REPOS,
+    },
+    notion: {
+      enabled: env.ENABLE_INTERNAL_EVIDENCE_NOTION_SEARCH,
+      token: env.INTERNAL_EVIDENCE_NOTION_TOKEN,
+      apiBaseUrl: env.INTERNAL_EVIDENCE_NOTION_API_BASE_URL,
+      notionVersion: env.INTERNAL_EVIDENCE_NOTION_VERSION,
+      pageIds: env.INTERNAL_EVIDENCE_NOTION_PAGE_IDS,
+    },
+    embedding: {
+      enabled: env.ENABLE_INTERNAL_EVIDENCE_EMBEDDING_RERANK,
+      apiKey: env.GEMINI_API_KEY,
+      model: env.INTERNAL_EVIDENCE_EMBEDDING_MODEL,
+      maxCandidates: env.INTERNAL_EVIDENCE_EMBEDDING_MAX_CANDIDATES,
+    },
+    knowledgeCircuit: resolvedKnowledgeCircuit,
+  });
+}
+
+function createKnowledgeCircuitFromEnv(env: InternalEvidenceEnv): KnowledgeCircuitService | undefined {
+  if (!env.ENABLE_KNOWLEDGE_CIRCUIT) {
+    return undefined;
+  }
+
+  const store = new SqliteKnowledgeCircuitStore(env.KNOWLEDGE_CIRCUIT_DB_PATH);
+  void store.cleanup({
+    feedbackTtlDays: env.KNOWLEDGE_CIRCUIT_FEEDBACK_TTL_DAYS,
+    maxFeedbackRows: env.KNOWLEDGE_CIRCUIT_MAX_FEEDBACK_ROWS,
+  }).catch((error: unknown) => {
+    console.warn('Knowledge circuit cleanup failed', error);
+  });
+
+  return new KnowledgeCircuitService(store, {
+    maxHops: env.KNOWLEDGE_CIRCUIT_MAX_HOPS,
+    maxNodes: env.KNOWLEDGE_CIRCUIT_MAX_NODES,
+  });
 }
 
 /** Discord interaction에 CX팀에게만 보이는 오류/상태 메시지를 보냅니다. */
@@ -101,10 +191,17 @@ export async function startWorker(
   const sheetsClient = GoogleSheetsClient.fromOAuth(oauth, env.GOOGLE_SHEET_ID, env.GOOGLE_SHEET_NAME);
   const gmailClient = GmailClient.fromOAuth(oauth, env.DRY_RUN_EMAIL);
   const contextProvider = new MarkdownDirectoryContextProvider();
+  const knowledgeCircuit = env.ENABLE_INTERNAL_EVIDENCE_ROUTER
+    ? createKnowledgeCircuitFromEnv(env)
+    : undefined;
+  const internalEvidenceProvider = createInternalEvidenceProviderFromEnv(env, knowledgeCircuit);
+  const draftGeneratorOptions = internalEvidenceProvider ? { internalEvidenceProvider } : {};
   const draftGenerator = new GeminiDraftGenerator(
     env.GEMINI_API_KEY,
     env.GEMINI_MODEL,
     contextProvider,
+    undefined,
+    draftGeneratorOptions,
   );
   const discordBot = new DiscordReviewBot(
     env.DISCORD_BOT_TOKEN,
@@ -126,23 +223,27 @@ export async function startWorker(
   const interactionHandler = async (interaction: InteractionLike): Promise<void> => {
     try {
       if (interaction.isButton()) {
+        const feedbackRecorder = createKnowledgeCircuitFeedbackRecorder(knowledgeCircuit, interaction.customId);
         await handleReviewButton(interaction as Parameters<typeof handleReviewButton>[0], {
           lock: inquiryLock,
           sheets: sheetsClient,
           gmail: gmailClient,
           fromEmail: env.GMAIL_FROM_EMAIL,
           fromName: env.GMAIL_FROM_NAME,
+          ...(feedbackRecorder ? { feedbackRecorder } : {}),
         });
         return;
       }
 
       if (interaction.isModalSubmit() && interaction.customId?.startsWith('editSubmit:')) {
+        const feedbackRecorder = createKnowledgeCircuitFeedbackRecorder(knowledgeCircuit, interaction.customId);
         await handleEditSubmitSend(interaction as Parameters<typeof handleEditSubmitSend>[0], {
           lock: inquiryLock,
           sheets: sheetsClient,
           gmail: gmailClient,
           fromEmail: env.GMAIL_FROM_EMAIL,
           fromName: env.GMAIL_FROM_NAME,
+          ...(feedbackRecorder ? { feedbackRecorder } : {}),
         });
       }
     } catch (error) {
@@ -164,4 +265,34 @@ export async function startWorker(
   });
 
   await app.start();
+}
+
+function createKnowledgeCircuitFeedbackRecorder(
+  knowledgeCircuit: KnowledgeCircuitService | undefined,
+  interactionKey: string | undefined,
+) {
+  if (!knowledgeCircuit || !interactionKey) {
+    return undefined;
+  }
+
+  const inquiryId = interactionKey.includes(':') ? interactionKey.split(':')[1] : interactionKey;
+  if (!inquiryId) {
+    return undefined;
+  }
+
+  return {
+    async record(
+      review: NonNullable<Awaited<ReturnType<GoogleSheetsClient['findInquiryReview']>>>,
+      outcome: 'approved' | 'edited' | 'rejected',
+    ): Promise<void> {
+      const weights = { approved: 1, edited: 0.5, rejected: -1 } as const;
+
+      await knowledgeCircuit.recordFeedbackForRefs({
+        refs: review.evidenceFeedbackRefs,
+        inquiryId,
+        outcome,
+        weightDelta: weights[outcome],
+      });
+    },
+  };
 }

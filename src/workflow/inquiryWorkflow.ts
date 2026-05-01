@@ -1,4 +1,6 @@
+import type { EvidenceItem } from '../domain/evidence.js';
 import type { Inquiry, InquiryDraft } from '../domain/inquiry.js';
+import type { KnowledgeCircuitFeedbackRef } from '../domain/knowledgeCircuit.js';
 import { WorkItemLock } from './workItemLock.js';
 
 /** Google Sheets 저장소가 workflow에 제공해야 하는 최소 기능입니다. */
@@ -106,10 +108,9 @@ export class InquiryWorkflow {
 
     await this.sheets.updateManagedFields(inquiry.rowNumber, {
       status: 'pending_review',
-      risk_level: draft.risk.level,
-      risk_reasons: draft.risk.reasons.join(' | '),
       draft_subject: draft.subject,
       draft_body: draft.body,
+      evidence_feedback_refs: serializeEvidenceFeedbackRefs(draft.evidenceReview?.evidence ?? []),
       discord_channel_id: review.channelId,
       discord_message_id: review.messageId,
       error_message: '',
@@ -128,4 +129,19 @@ export class InquiryWorkflow {
 
 function isPreReviewRetryableStatus(status: Inquiry['status']): boolean {
   return status === 'drafting' || status === 'failed' || status === 'new';
+}
+
+function serializeEvidenceFeedbackRefs(evidence: EvidenceItem[]): string {
+  const refs: KnowledgeCircuitFeedbackRef[] = evidence
+    .filter((item): item is EvidenceItem & { circuitNodeId: string; circuitContentHash: string } => (
+      Boolean(item.circuitNodeId) && Boolean(item.circuitContentHash)
+    ))
+    .map((item) => ({
+      nodeId: item.circuitNodeId,
+      sourceType: item.sourceType,
+      sourceRef: item.source,
+      contentHash: item.circuitContentHash,
+    }));
+
+  return refs.length > 0 ? JSON.stringify(refs) : '';
 }

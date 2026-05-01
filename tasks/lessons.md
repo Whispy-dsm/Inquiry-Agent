@@ -34,9 +34,52 @@
 
 - Correction: Deployment reached `docker-compose up`, but failed because host port 3000 was already allocated.
 - Rule: Compose files should expose a configurable host port separately from the application listener port when deploying onto shared servers.
+- Rule: When converting a compose deployment to Swarm, use an explicit stack network name instead of the default network if a legacy compose network may already exist.
+
+## Match issue and PR scope to the user's active work
+
+- Correction: I created an issue and PR for the review-side security report finding when the user expected the current Discord 429 implementation work.
+- Rule: Before creating an issue or PR, restate the exact work scope from the user's latest request and align title, body, branch, labels, and commits to that scope.
+- Correction: I created a repo-name label when the user wanted this repository's label set to match the existing `Whispy_BE` repository labels.
+- Rule: When the user says to label work like another repository, inspect and mirror that repository's actual labels instead of inventing a new repo-name label.
 
 ## Check project git convention before committing
 
 - Correction: A commit was created with a Lore-style subject but without the repository's required `<type> : <description>` subject format.
 - Rule: Before committing in this repository, read `docs/conventions/agent/git.md` and use subjects such as `ci : ...`, while keeping Lore trailers in the commit body.
+- Correction: I merged a PR without immediately creating and pushing the required semantic version tag.
+- Rule: After merging an issue or PR scope in this repository, create the next `v{MAJOR}.{MINOR}.{PATCH}` tag on the merge commit, push it to origin, and verify the remote tag exists before reporting completion.
+- Correction: I committed behavior changes, docs, repository hygiene, and task memory together in one broad commit.
+- Rule: Before committing, inspect the staged diff and split commits by reviewable concern: behavior with tests, operator docs, repository hygiene, and agent memory/task logs should be separate commits unless they are inseparable.
 - Rule: For incorrectly entered records, say the handling method requires 담당자 확인.
+
+## Keep the decision gate broader than the first validation slice
+
+- Correction: The user clarified that internal-evidence routing must handle more than auth/account questions; auth/account can be a validation slice, not the product boundary.
+- Rule: When designing AI triage for inquiry handling, separate the broad classifier categories from the narrow first evaluation dataset.
+- Rule: Do not make a concrete user example look like the only supported category unless the user explicitly asks for that limitation.
+
+## Do not preserve excluded review paths in design docs
+
+- Correction: The user clarified that Codex cross-check will not be part of this design.
+- Rule: When the user excludes a review or validation path, remove that section from the design artifact instead of leaving it as background context.
+
+## Align retrieval depth with the intended source of truth
+
+- Correction: The user clarified that code will be searched through GitHub rather than kept locally.
+- Rule: When GitHub is the intended source of truth, external evidence should fetch matched file contents and analyze them in memory instead of leaving AST/symbol analysis local-only.
+- Rule: Keep privacy boundaries intact: outbound external search queries must not include raw customer text, names, emails, account IDs, or phone-like tokens.
+
+## Do not treat Notion as GitHub-hosted documentation
+
+- Correction: The user clarified that Notion is not GitHub and should be queried through the Notion API.
+- Rule: When a source is an external SaaS system, implement the provider against that system's API instead of modeling it as a local export or mirrored repository unless the user explicitly chooses that architecture.
+- Rule: Remove obsolete env knobs when a source-of-truth decision changes, so operators do not configure two conflicting paths.
+
+## Keep PR remediation inside the reviewed scope
+
+- Correction: The user rejected broad, convention-breaking PR work and asked for review fixes to be split and scoped correctly.
+- Rule: When fixing PR review findings, first rebase or remove unrelated branch history, then inspect the resulting diff for leftover files/tests/docs from the previous task before adding new fixes.
+- Rule: Keep runtime fixes, tests, and docs in separate commits when the user asks for granular PR history.
+- Correction: The user later changed the scope and explicitly asked to include #9 in the #10 PR after it had been removed.
+- Rule: Treat the user's latest scope update as authoritative; if a previously excluded branch must be included, re-apply it deliberately and then re-check cross-scope config defaults for consistency.

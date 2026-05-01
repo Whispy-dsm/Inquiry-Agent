@@ -47,7 +47,7 @@ describe('MarkdownDirectoryContextProvider', () => {
     expect(result[0]).not.toContain('카테고리');
   });
 
-  it('should add high-risk policy context for payment inquiries', async () => {
+  it('should add sensitive policy context for payment inquiries', async () => {
     // Arrange
     tempDir = await mkdtemp(join(tmpdir(), 'whispy-rag-'));
     await writeFile(

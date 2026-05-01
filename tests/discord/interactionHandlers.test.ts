@@ -157,6 +157,7 @@ describe('handleReviewButton', () => {
     });
     expect(deps.sheets.updateManagedFields).toHaveBeenNthCalledWith(2, 2, {
       status: 'sent',
+      '완료 여부': 'TRUE',
       final_subject: '문의 답변드립니다',
       final_body: '안녕하세요.',
       gmail_message_id: 'gmail_123',
@@ -345,6 +346,57 @@ describe('handleEditSubmit', () => {
       handledBy: 'discord_user_1',
     });
   });
+
+  it('should record knowledge circuit feedback after approval', async () => {
+    // Arrange
+    const feedbackRecorder = { record: vi.fn().mockResolvedValue(undefined) };
+    const review = {
+      rowNumber: 2,
+      email: 'user@example.com',
+      draftSubject: 'subject',
+      draftBody: 'body',
+      evidenceFeedbackRefs: [{
+        nodeId: 'node_1',
+        sourceType: 'backend',
+        sourceRef: 'auth/session.ts',
+        contentHash: 'hash',
+      }],
+      status: 'pending_review',
+    };
+    const interaction = {
+      customId: 'approve:inq_1',
+      user: { id: 'discord_user_1' },
+      message: { content: 'review message' },
+      reply: vi.fn(),
+      update: vi.fn(),
+      deferUpdate: vi.fn(),
+      editReply: vi.fn(),
+      followUp: vi.fn(),
+      showModal: vi.fn(),
+    };
+    const deps = {
+      lock: {
+        tryAcquire: vi.fn().mockResolvedValue({ acquired: true, holder: 'discord_user_1' }),
+        release: vi.fn(),
+      },
+      sheets: {
+        findInquiryReview: vi.fn().mockResolvedValue(review),
+        updateManagedFields: vi.fn().mockResolvedValue(undefined),
+      },
+      gmail: {
+        sendEmail: vi.fn().mockResolvedValue({ messageId: 'gmail_123', dryRun: true }),
+      },
+      fromEmail: 'support@example.com',
+      fromName: 'Support Team',
+      feedbackRecorder,
+    };
+
+    // Act
+    await handleReviewButton(interaction as never, deps as never);
+
+    // Assert
+    expect(feedbackRecorder.record).toHaveBeenCalledWith(review, 'approved');
+  });
 });
 
 describe('handleEditSubmitSend', () => {
@@ -407,6 +459,7 @@ describe('handleEditSubmitSend', () => {
     });
     expect(deps.sheets.updateManagedFields).toHaveBeenNthCalledWith(2, 2, {
       status: 'sent',
+      '완료 여부': 'TRUE',
       final_subject: '수정 제목',
       final_body: '수정 본문',
       gmail_message_id: 'gmail_123',

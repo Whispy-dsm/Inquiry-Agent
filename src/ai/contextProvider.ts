@@ -138,7 +138,7 @@ function buildQueryTerms(inquiry: Inquiry): string[] {
     SUGGESTION: ['건의', '제안', '개선', '요청', '기능'],
     OTHER: ['담당자', '확인', '개인정보', '삭제', '탈퇴', '결제', '보안', '법적'],
   };
-  const highRiskExpansions: Array<{ pattern: RegExp; terms: string[] }> = [
+  const sensitivePolicyExpansions: Array<{ pattern: RegExp; terms: string[] }> = [
     { pattern: /개인정보|개인 정보|삭제|탈퇴|계정 삭제/i, terms: ['개인정보', '삭제', '탈퇴', '본인 확인'] },
     { pattern: /환불|결제|청구|영수증|구독|프리미엄/i, terms: ['결제', '환불', '구독', '프리미엄', 'Google Play'] },
     { pattern: /법적|소송|신고|분쟁/i, terms: ['법적', '분쟁', '담당자'] },
@@ -150,7 +150,7 @@ function buildQueryTerms(inquiry: Inquiry): string[] {
     ...expansionsByType[inquiry.type],
   ];
 
-  for (const expansion of highRiskExpansions) {
+  for (const expansion of sensitivePolicyExpansions) {
     if (expansion.pattern.test(inquiry.message)) {
       terms.push(...expansion.terms);
     }
