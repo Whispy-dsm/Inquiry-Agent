@@ -138,6 +138,7 @@ describe('GitHubCodeSearchEvidenceSource', () => {
       status: 'found',
       retrievalSignals: expect.arrayContaining(['external', 'keyword', 'ast']),
       snippet: expect.stringContaining('concurrentLoginPolicy'),
+      circuitContentHash: expect.any(String),
     }));
   }, 15_000);
 
@@ -313,6 +314,59 @@ describe('NotionApiEvidenceSource', () => {
       status: 'found',
       retrievalSignals: expect.arrayContaining(['external', 'keyword']),
       snippet: expect.stringContaining('Concurrent login'),
+      circuitContentHash: expect.any(String),
+    }));
+  });
+
+  it('should follow paginated Notion block children', async () => {
+    // Arrange
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => notionPage('page-1', 'Long Login Policy', 'https://notion.example/long-login-policy'),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          has_more: true,
+          next_cursor: 'cursor-2',
+          results: [
+            notionParagraph('block-1', 'Introductory policy text.'),
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          has_more: false,
+          next_cursor: null,
+          results: [
+            notionParagraph('block-2', 'Concurrent login policy appears after the first page of blocks.'),
+          ],
+        }),
+      });
+    const target = new NotionApiEvidenceSource({
+      token: 'notion-token',
+      apiBaseUrl: 'https://notion.example',
+      pageIds: 'page-1',
+      fetchFn,
+    });
+
+    // Act
+    const result = await target.findEvidence(
+      { ...baseInquiry, message: 'Can users use concurrent login?' },
+      notionRouteDecision,
+    );
+
+    // Assert
+    expect(String(fetchFn.mock.calls[2]?.[0])).toBe('https://notion.example/v1/blocks/page-1/children?page_size=100&start_cursor=cursor-2');
+    expect(result[0]).toEqual(expect.objectContaining({
+      sourceType: 'notion',
+      status: 'found',
+      snippet: expect.stringContaining('after the first page'),
     }));
   });
 

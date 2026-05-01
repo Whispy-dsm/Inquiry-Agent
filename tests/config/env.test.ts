@@ -170,6 +170,36 @@ describe('loadEnv', () => {
     expect(result.INTERNAL_EVIDENCE_NOTION_PAGE_IDS).toBeUndefined();
   });
 
+  it('should trim optional internal evidence string values', () => {
+    // Arrange
+    const input = {
+      GOOGLE_SHEET_ID: 'sheet-id',
+      GOOGLE_SHEET_NAME: 'Whispy inquiries',
+      GOOGLE_OAUTH_CLIENT_ID: 'client-id',
+      GOOGLE_OAUTH_CLIENT_SECRET: 'client-secret',
+      GOOGLE_OAUTH_REFRESH_TOKEN: 'refresh-token',
+      DISCORD_BOT_TOKEN: 'discord-token',
+      DISCORD_INQUIRY_CHANNEL_ID: 'channel-id',
+      GEMINI_API_KEY: 'gemini-key',
+      GMAIL_FROM_EMAIL: 'support@example.com',
+      ENABLE_INTERNAL_EVIDENCE_ROUTER: 'true',
+      INTERNAL_EVIDENCE_GITHUB_TOKEN: ' github-token ',
+      INTERNAL_EVIDENCE_GITHUB_API_BASE_URL: ' https://github.example/api ',
+      INTERNAL_EVIDENCE_NOTION_TOKEN: ' notion-token ',
+      INTERNAL_EVIDENCE_NOTION_PAGE_IDS: ' page-1,page-2 ',
+      WEBHOOK_SECRET: 'shared-secret',
+    };
+
+    // Act
+    const result = loadEnv(input);
+
+    // Assert
+    expect(result.INTERNAL_EVIDENCE_GITHUB_TOKEN).toBe('github-token');
+    expect(result.INTERNAL_EVIDENCE_GITHUB_API_BASE_URL).toBe('https://github.example/api');
+    expect(result.INTERNAL_EVIDENCE_NOTION_TOKEN).toBe('notion-token');
+    expect(result.INTERNAL_EVIDENCE_NOTION_PAGE_IDS).toBe('page-1,page-2');
+  });
+
   it('should include internal evidence deployment template defaults', () => {
     // Arrange
     const templatePaths = ['docker-compose.yml', 'docker-stack.yml'];
