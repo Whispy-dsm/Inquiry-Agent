@@ -105,6 +105,67 @@ describe('GoogleSheetsClient', () => {
     });
   });
 
+  it('should expand the sheet grid before writing beyond the current column limit', async () => {
+    // Arrange
+    const existingHeaders = Array.from({ length: 29 }, (_, index) => `existing_${index + 1}`);
+    const appendGridColumns = vi.fn().mockResolvedValue({});
+    const update = vi.fn().mockResolvedValue({});
+    const fakeSheets = {
+      spreadsheets: {
+        get: vi.fn()
+          .mockResolvedValueOnce({
+            data: {
+              sheets: [{ properties: { sheetId: 123, title: 'Whispy responses' } }],
+            },
+          })
+          .mockResolvedValueOnce({
+            data: {
+              sheets: [{
+                properties: {
+                  sheetId: 123,
+                  title: 'Whispy responses',
+                  gridProperties: { columnCount: 29 },
+                },
+              }],
+            },
+          }),
+        batchUpdate: appendGridColumns,
+        values: {
+          get: vi.fn().mockResolvedValue({
+            data: {
+              values: [existingHeaders],
+            },
+          }),
+          batchUpdate: vi.fn().mockResolvedValue({}),
+          update,
+        },
+      },
+    };
+
+    const target = new GoogleSheetsClient(fakeSheets as never, 'sheet-id', 'Whispy responses');
+
+    // Act
+    await target.ensureManagedColumns();
+
+    // Assert
+    expect(appendGridColumns).toHaveBeenCalledWith({
+      spreadsheetId: 'sheet-id',
+      requestBody: {
+        requests: [{
+          appendDimension: {
+            sheetId: 123,
+            dimension: 'COLUMNS',
+            length: 13,
+          },
+        }],
+      },
+    });
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      range: "'Whispy responses'!AD1:AP1",
+    }));
+    expect(appendGridColumns.mock.invocationCallOrder[0]).toBeLessThan(update.mock.invocationCallOrder[0] ?? 0);
+  });
+
   it('should resolve the actual sheet title from spreadsheet metadata', async () => {
     // Arrange
     const update = vi.fn().mockResolvedValue({});
