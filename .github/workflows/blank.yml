@@ -163,7 +163,7 @@ jobs:
 
             docker rm -f inquiry-agent 2>/dev/null || true
             docker-compose -f docker-stack.yml config | sed '/^name:/d' > docker-stack.rendered.yml
-            docker stack deploy --with-registry-auth -c docker-stack.rendered.yml inquiry-agent
+            docker stack deploy --detach=false --with-registry-auth -c docker-stack.rendered.yml inquiry-agent
 
             SERVICE_NAME=inquiry-agent_inquiry-agent
 
