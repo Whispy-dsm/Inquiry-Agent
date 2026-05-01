@@ -647,8 +647,8 @@ Verification: focused Discord/webhook tests, `npm run typecheck`, `npm test`, `n
   - `docker compose ... config` rendered the new env keys; local secret values were not used in documentation or final reporting
 - Remaining risks:
   - `npm run lint` remains blocked by the repository's existing missing ESLint v9 `eslint.config.*` file
-  - external GitHub search requires read access/token for private repositories and may still be rate-limited
-  - live Notion API search is still not implemented; Notion remains local/exported docs plus optional GitHub-hosted policy docs
+  - external GitHub search requires a GitHub token with read permission for private repositories and may still be rate-limited
+  - live Notion API search requires a Notion integration token and explicit page sharing; unavailable pages return unavailable evidence
 
 ## GitHub-Only AST/Symbol Evidence
 
@@ -872,3 +872,32 @@ Verification: focused Discord/webhook tests, `npm run typecheck`, `npm test`, `n
 - Simplifications made: filtered completed rows at the Sheets adapter boundary and changed fallback polling defaults instead of adding rate-limit state or a new database.
 - Verification: focused config/Sheets tests, full `npm test`, `npm run typecheck`, `npm run build`, and `git diff --check` passed after #9/#10 integration.
 - Remaining risks: `npm run lint` is still blocked by the repository's existing missing ESLint v9 `eslint.config.*` file; deployed environments that explicitly set `ENABLE_FALLBACK_POLLING=true` still need their secret/env value changed separately.
+
+## PR Review Follow-up Fixes
+
+### Plan
+
+- [x] Make knowledge-circuit content hashes stable across inquiry-dependent snippets while still invalidating feedback when fetched source content changes.
+- [x] Keep upserted node hashes and returned `circuitContentHash` values on one shared calculation path.
+- [x] Fetch all paginated Notion block children up to the configured block cap.
+- [x] Redact Unix-style absolute paths before sending evidence snippets to Gemini.
+- [x] Constrain model-requested evidence sources to the selected route.
+- [x] Ensure only `found` evidence consumes the knowledge-circuit `maxNodes` budget.
+- [x] Honor `KNOWLEDGE_CIRCUIT_MAX_HOPS` above 1 or otherwise remove the misleading behavior.
+- [x] Align in-memory feedback cleanup ordering with SQLite's newest-by-`createdAt` retention.
+- [x] Trim optional string env values and add regression coverage.
+- [x] Close SQLite test stores in `finally` and clarify GitHub token wording in task docs.
+- [x] Run focused tests, full tests, typecheck, build, lint attempt, and diff hygiene.
+
+### Review
+
+- Changed files: `src/ai/knowledgeCircuit.ts`, `src/ai/internalEvidence.ts`, `src/ai/geminiDraftGenerator.ts`, `src/ai/knowledgeCircuitStore.ts`, `src/config/env.ts`, focused tests, and `tasks/todo.md`.
+- Simplifications made: reused provider-level `circuitContentHash` instead of persisting raw source bodies; used one route-source map for both filtering and defaults.
+- Verification:
+  - `npm run test -- tests/ai/knowledgeCircuit.test.ts tests/ai/internalEvidence.test.ts tests/ai/geminiDraftGenerator.test.ts tests/config/env.test.ts` -> 4 files / 38 tests passed.
+  - `npm run typecheck` -> passed.
+  - `npm run test` -> 18 files / 101 tests passed.
+  - `npm run build` -> passed.
+  - `git diff --check` -> passed with CRLF warnings only.
+  - `npm run lint` -> blocked by existing missing ESLint v9 `eslint.config.*`.
+- Remaining risks: `node:sqlite` still emits Node's experimental warning in tests; lint remains blocked until the repository adds an ESLint v9 flat config.
