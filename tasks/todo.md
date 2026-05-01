@@ -901,3 +901,29 @@ Verification: focused Discord/webhook tests, `npm run typecheck`, `npm test`, `n
   - `git diff --check` -> passed with CRLF warnings only.
   - `npm run lint` -> blocked by existing missing ESLint v9 `eslint.config.*`.
 - Remaining risks: `node:sqlite` still emits Node's experimental warning in tests; lint remains blocked until the repository adds an ESLint v9 flat config.
+
+## Sheet Managed Column Grid Expansion
+
+Related issue: #12
+
+### Plan
+
+- [x] Reproduce the production failure where writing `AD1` fails because the Sheet grid only has 29 columns.
+- [x] Expand the Google Sheet column grid before writing missing managed headers beyond the current `gridProperties.columnCount`.
+- [x] Keep the existing header append path for test/mocked clients that do not expose spreadsheet-level `batchUpdate`.
+- [x] Add regression coverage for append-dimension before header update.
+- [x] Run focused Sheets tests, typecheck, build, lint attempt, full tests, and diff hygiene.
+
+### Review
+
+- Changed files: `src/sheets/googleSheetsClient.ts`, `tests/sheets/googleSheetsClient.test.ts`, `tasks/todo.md`.
+- Root cause: `ensureManagedColumns` wrote missing managed headers into AD and beyond without first expanding the sheet grid beyond its current 29 columns.
+- Simplifications made: used the spreadsheet-level `appendDimension` request only when metadata and `batchUpdate` are available, preserving the old direct header update path for simple mocks.
+- Verification:
+  - `npm run test -- tests/sheets/googleSheetsClient.test.ts tests/sheets/sheetColumns.test.ts` -> 2 files / 14 tests passed.
+  - `npm run typecheck` -> passed.
+  - `npm run build` -> passed.
+  - `npm run test` -> 18 files / 102 tests passed.
+  - `git diff --check` -> passed with CRLF warnings only.
+  - `npm run lint` -> blocked by existing missing ESLint v9 `eslint.config.*`.
+- Remaining risks: deploy still needs the patched image rebuilt and restarted before the production container stops failing on the old code.
