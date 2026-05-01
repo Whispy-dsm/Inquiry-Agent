@@ -289,15 +289,16 @@ function normalizeRequestedSources(route: EvidenceRoute, requestedSources: Evide
     return [];
   }
 
-  const routeDefaults: Partial<Record<EvidenceRoute, EvidenceSourceType[]>> = {
+  const routeSources: Partial<Record<EvidenceRoute, EvidenceSourceType[]>> = {
     answer_from_rag: ['rag'],
     need_backend_evidence: ['backend'],
     need_flutter_evidence: ['flutter'],
     need_notion_policy: ['notion'],
     need_multi_source_evidence: ['backend', 'flutter', 'notion'],
   };
-  const normalized = requestedSources.filter((source) => source !== 'rag');
-  const sources = normalized.length > 0 ? normalized : routeDefaults[route] ?? [];
+  const allowedSources = routeSources[route] ?? [];
+  const normalized = requestedSources.filter((source) => allowedSources.includes(source));
+  const sources = normalized.length > 0 ? normalized : allowedSources;
 
   return Array.from(new Set(sources));
 }
@@ -334,7 +335,7 @@ function formatEvidenceScore(score: number | undefined): string {
 function summarizeEvidenceForModel(snippet: string): string {
   const compact = snippet
     .replace(/https?:\/\/[^\s)]+/gi, '[url]')
-    .replace(/[A-Z]:[\\/][^\s]+/gi, '[path]')
+    .replace(/(?:[A-Z]:[\\/]|[\\/])[\w.-]+(?:[\\/][\w.-]+)+/gi, '[path]')
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]')
     .replace(/\b(?:[A-Za-z0-9_-]{20,}|[a-f0-9]{24,})\b/gi, '[token]')
     .replace(/\s+/g, ' ')

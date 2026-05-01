@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { EvidenceItem, EvidenceRouteDecision } from '../domain/evidence.js';
 import type { Inquiry } from '../domain/inquiry.js';
-import type { KnowledgeCircuitFeedbackRef } from '../domain/knowledgeCircuit.js';
+import type { KnowledgeCircuitFeedbackRef, KnowledgeEdge } from '../domain/knowledgeCircuit.js';
 import { contentHash, type KnowledgeCircuitStore } from './knowledgeCircuitStore.js';
 
 export type KnowledgeCircuitOptions = {
@@ -12,6 +12,7 @@ export type KnowledgeCircuitOptions = {
 type CircuitEvidence = {
   item: EvidenceItem;
   nodeId?: string;
+  contentHash?: string;
   circuitScore: number;
   conflicts: string[];
 };
@@ -33,16 +34,24 @@ export class KnowledgeCircuitService {
     decision: EvidenceRouteDecision,
     evidence: EvidenceItem[],
   ): Promise<EvidenceItem[]> {
-    const candidates = evidence.slice(0, this.maxNodes);
+    const candidates: Array<{ index: number; item: EvidenceItem }> = [];
+
+    for (const [index, item] of evidence.entries()) {
+      if (item.status === 'found' && candidates.length < this.maxNodes) {
+        candidates.push({ index, item });
+      }
+    }
+
+    const candidateIndexSet = new Set(candidates.map((candidate) => candidate.index));
     const processed = await Promise.all(
-      candidates.map((item) => this.processEvidenceItem(inquiry, decision, item)),
+      candidates.map(({ item }) => this.processEvidenceItem(inquiry, decision, item)),
     );
     const untouched: CircuitEvidence[] = evidence
-      .slice(this.maxNodes)
+      .filter((_, index) => !candidateIndexSet.has(index))
       .map((item) => ({ item, circuitScore: 0, conflicts: [] }));
 
     return [...processed, ...untouched]
-      .map(({ item, circuitScore, nodeId, conflicts }) => annotateEvidenceItem(item, circuitScore, nodeId, conflicts))
+      .map(({ item, circuitScore, nodeId, contentHash, conflicts }) => annotateEvidenceItem(item, circuitScore, nodeId, contentHash, conflicts))
       .sort(compareEvidence);
   }
 
@@ -95,6 +104,7 @@ export class KnowledgeCircuitService {
       return { item, circuitScore: 0, conflicts: [] };
     }
 
+    const itemContentHash = evidenceContentHash(item);
     const node = await this.store.upsertNode({
       sourceType: item.sourceType,
       authority: item.authority,
@@ -102,10 +112,10 @@ export class KnowledgeCircuitService {
       sourceRef: item.source,
       topics: extractTopics(`${item.title}\n${item.source}`),
       symbols: extractSymbols(`${item.title}\n${item.source}`),
-      contentHash: contentHash(`${item.sourceType}\n${item.source}\n${item.title}\n${item.snippet}`),
+      contentHash: itemContentHash,
     });
     const feedbackWeight = await this.store.feedbackWeightForNode(node.id, node.contentHash);
-    const relatedEdges = this.maxHops > 0 ? await this.store.findRelatedEdges([node.id]) : [];
+    const relatedEdges = await this.findRelatedEdgesWithinHops(node.id);
     const edgeBoost = relatedEdges
       .filter((edge) => edge.relation === 'supports' || edge.relation === 'implements' || edge.relation === 'explains')
       .reduce((total, edge) => total + edge.weight * edge.confidence, 0);
@@ -116,9 +126,40 @@ export class KnowledgeCircuitService {
     return {
       item,
       nodeId: node.id,
+      contentHash: node.contentHash,
       circuitScore: roundScore(feedbackWeight + edgeBoost),
       conflicts,
     };
+  }
+
+  private async findRelatedEdgesWithinHops(nodeId: string): Promise<KnowledgeEdge[]> {
+    if (this.maxHops <= 0) {
+      return [];
+    }
+
+    const edgesById = new Map<string, KnowledgeEdge>();
+    const visitedNodes = new Set([nodeId]);
+    let frontier = new Set([nodeId]);
+
+    for (let hop = 0; hop < this.maxHops && frontier.size > 0; hop += 1) {
+      const relatedEdges = await this.store.findRelatedEdges(Array.from(frontier));
+      const nextFrontier = new Set<string>();
+
+      for (const edge of relatedEdges) {
+        edgesById.set(edge.id, edge);
+
+        for (const candidateNodeId of [edge.fromNodeId, edge.toNodeId]) {
+          if (!visitedNodes.has(candidateNodeId)) {
+            visitedNodes.add(candidateNodeId);
+            nextFrontier.add(candidateNodeId);
+          }
+        }
+      }
+
+      frontier = nextFrontier;
+    }
+
+    return Array.from(edgesById.values());
   }
 }
 
@@ -132,6 +173,7 @@ function annotateEvidenceItem(
   item: EvidenceItem,
   circuitScore: number,
   nodeId: string | undefined,
+  itemContentHash: string | undefined,
   conflicts: string[],
 ): EvidenceItem {
   if (!nodeId && circuitScore === 0 && conflicts.length === 0) {
@@ -145,9 +187,13 @@ function annotateEvidenceItem(
     retrievalSignals,
     score: roundScore((item.score ?? 0) + circuitScore),
     circuitScore,
-    ...(nodeId ? { circuitNodeId: nodeId, circuitContentHash: contentHash(`${item.sourceType}\n${item.source}\n${item.title}\n${item.snippet}`) } : {}),
+    ...(nodeId && itemContentHash ? { circuitNodeId: nodeId, circuitContentHash: itemContentHash } : {}),
     ...(conflicts.length > 0 ? { circuitConflicts: conflicts } : {}),
   };
+}
+
+function evidenceContentHash(item: EvidenceItem): string {
+  return item.circuitContentHash ?? contentHash(`${item.sourceType}\n${item.source}\n${item.title}`);
 }
 
 function compareEvidence(left: EvidenceItem, right: EvidenceItem): number {

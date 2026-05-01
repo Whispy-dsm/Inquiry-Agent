@@ -112,7 +112,8 @@ export class InMemoryKnowledgeCircuitStore implements KnowledgeCircuitStore {
     const cutoff = Date.now() - options.feedbackTtlDays * 24 * 60 * 60 * 1000;
     const retained = this.feedback
       .filter((item) => Date.parse(item.createdAt) >= cutoff)
-      .slice(-options.maxFeedbackRows);
+      .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
+      .slice(0, options.maxFeedbackRows);
 
     this.feedback.splice(0, this.feedback.length, ...retained);
   }

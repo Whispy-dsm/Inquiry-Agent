@@ -8,6 +8,7 @@ import type {
   EvidenceSourceType,
 } from '../domain/evidence.js';
 import type { KnowledgeCircuitService } from './knowledgeCircuit.js';
+import { contentHash } from './knowledgeCircuitStore.js';
 
 type InternalEvidenceSourceType = Exclude<EvidenceSourceType, 'rag'>;
 
@@ -273,14 +274,19 @@ export class GitHubCodeSearchEvidenceSource implements EvidenceSourceProvider {
     const keywordScore = scoreSearchText(`${path}\n${content}`.toLowerCase(), terms);
     const symbolScore = scoreSymbols(symbolExtraction.symbols, terms);
     const score = (evidenceItem.score ?? 0) + keywordScore + symbolScore;
+    const sourceContentHash = contentHash(`${this.sourceType}\n${evidenceItem.source}\n${evidenceItem.title}\n${path}\n${content}`);
 
     if (keywordScore === 0 && symbolScore === 0) {
-      return evidenceItem;
+      return {
+        ...evidenceItem,
+        circuitContentHash: sourceContentHash,
+      };
     }
 
     return {
       ...evidenceItem,
       snippet: trimSnippet(buildEvidenceSnippet(content, terms, symbolExtraction.symbols), this.maxSnippetLength),
+      circuitContentHash: sourceContentHash,
       retrievalSignals: addRetrievalSignals(
         evidenceItem.retrievalSignals,
         buildRetrievalSignals(keywordScore > 0 ? keywordScore : 1, symbolScore, symbolExtraction.signal),
@@ -433,15 +439,18 @@ export class NotionApiEvidenceSource implements EvidenceSourceProvider {
       return null;
     }
 
+    const source = pageMetadata.url ?? `notion:${page.id}`;
+
     return {
       sourceType: 'notion',
       authority: 'product-policy',
       title: `notion: ${pageMetadata.title ?? page.id}`,
-      source: pageMetadata.url ?? `notion:${page.id}`,
+      source,
       snippet: trimSnippet(buildEvidenceSnippet(text, terms, symbols), this.maxSnippetLength),
       status: 'found',
       retrievalSignals: addRetrievalSignals(['external'], buildRetrievalSignals(score, symbolScore, symbols.length > 0 ? 'symbol' : undefined)),
       score: totalScore,
+      circuitContentHash: contentHash(`notion\n${source}\n${pageMetadata.title ?? page.id}\n${text}`),
     };
   }
 
@@ -467,20 +476,29 @@ export class NotionApiEvidenceSource implements EvidenceSourceProvider {
         continue;
       }
 
-      const response = await this.request(`${this.apiBaseUrl}/v1/blocks/${encodeURIComponent(blockId)}/children?page_size=100`);
+      let cursor: string | undefined;
+      let hasMore = true;
 
-      if ('error' in response) {
-        return response;
-      }
+      while (hasMore && visitedBlocks < this.maxFetchedBlocks) {
+        const cursorQuery = cursor ? `&start_cursor=${encodeURIComponent(cursor)}` : '';
+        const response = await this.request(`${this.apiBaseUrl}/v1/blocks/${encodeURIComponent(blockId)}/children?page_size=100${cursorQuery}`);
 
-      const children = notionTextBlocks(response.payload);
-      blocks.push(...children);
-      visitedBlocks += children.length;
-
-      for (const child of children) {
-        if (child.hasChildren && visitedBlocks + queue.length < this.maxFetchedBlocks) {
-          queue.push(child.id);
+        if ('error' in response) {
+          return response;
         }
+
+        const children = notionTextBlocks(response.payload);
+        blocks.push(...children);
+        visitedBlocks += children.length;
+
+        for (const child of children) {
+          if (child.hasChildren && visitedBlocks + queue.length < this.maxFetchedBlocks) {
+            queue.push(child.id);
+          }
+        }
+
+        hasMore = notionHasMore(response.payload);
+        cursor = notionNextCursor(response.payload);
       }
     }
 
@@ -1132,6 +1150,7 @@ function importTypeScriptCompilerWithin(timeoutMs: number): Promise<typeof impor
 
   return new Promise((resolve) => {
     const timeout = setTimeout(() => resolve(null), timeoutMs);
+    unrefTimer(timeout);
 
     typescriptCompilerPromise
       ?.then((compiler) => {
@@ -1143,6 +1162,18 @@ function importTypeScriptCompilerWithin(timeoutMs: number): Promise<typeof impor
         resolve(null);
       });
   });
+}
+
+function unrefTimer(timer: ReturnType<typeof setTimeout>): void {
+  if (typeof timer !== 'object' || timer === null) {
+    return;
+  }
+
+  const maybeUnref = (timer as { unref?: unknown }).unref;
+
+  if (typeof maybeUnref === 'function') {
+    maybeUnref.call(timer);
+  }
 }
 
 function extractTypeScriptSymbolsHeuristic(content: string): string[] {
@@ -1472,6 +1503,14 @@ function notionTextBlocks(payload: unknown): NotionTextBlock[] {
       hasChildren: block.has_children === true,
     }];
   });
+}
+
+function notionHasMore(payload: unknown): boolean {
+  return isRecord(payload) && payload.has_more === true && typeof payload.next_cursor === 'string';
+}
+
+function notionNextCursor(payload: unknown): string | undefined {
+  return isRecord(payload) && typeof payload.next_cursor === 'string' ? payload.next_cursor : undefined;
 }
 
 function blockPlainText(block: Record<string, unknown>): string {

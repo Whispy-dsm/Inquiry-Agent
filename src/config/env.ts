@@ -19,8 +19,10 @@ const booleanStringSchema = z.preprocess((value) => {
 }, z.boolean());
 
 const optionalStringSchema = z.preprocess((value) => {
-  if (typeof value === 'string' && value.trim().length === 0) {
-    return undefined;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+
+    return trimmed.length > 0 ? trimmed : undefined;
   }
 
   return value;
