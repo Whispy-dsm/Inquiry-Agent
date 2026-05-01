@@ -927,3 +927,22 @@ Related issue: #12
   - `git diff --check` -> passed with CRLF warnings only.
   - `npm run lint` -> blocked by existing missing ESLint v9 `eslint.config.*`.
 - Remaining risks: deploy still needs the patched image rebuilt and restarted before the production container stops failing on the old code.
+
+## Swarm Deploy Cleanup Wait
+
+Related issue: #13
+
+### Plan
+
+- [x] Diagnose why old Swarm task containers remain after a successful GitHub Actions deploy.
+- [x] Confirm the deploy log runs `docker stack deploy` in background mode before cleanup.
+- [x] Change stack deploy to `--detach=false` so cleanup runs after the service update completes.
+- [x] Verify workflow diff and push through main deploy.
+
+### Review
+
+- Changed files: `.github/workflows/blank.yml`, `tasks/todo.md`.
+- Root cause: cleanup ran immediately after a detached Swarm deploy, before the previous task container had stopped.
+- Simplifications made: changed only the deploy invocation to wait for the Swarm update instead of adding another polling path.
+- Verification: `git diff --check` passed with CRLF warnings only; the next `main` push will exercise the workflow deploy path.
+- Remaining risks: final proof requires checking the next GitHub Actions deploy log and server `docker ps -a` output after this commit is pushed.
