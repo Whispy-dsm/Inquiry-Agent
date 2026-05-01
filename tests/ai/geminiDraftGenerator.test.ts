@@ -35,7 +35,6 @@ describe('geminiDraftGenerator', () => {
       summary: '사용법 문의',
       subject: '문의 답변드립니다',
       body: '안녕하세요. 안내드립니다.',
-      risk: { level: 'low', reasons: [] },
       missingInformation: [],
     });
   });
