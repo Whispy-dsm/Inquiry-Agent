@@ -43,7 +43,7 @@
 | 내 계정 조회 | `GET /users/account` | 이메일, 이름, 프로필, 성별, OAuth 제공자 등 |
 | 프로필 수정 | `PATCH /users/profile` | 이름, 프로필 이미지 URL, 성별 |
 | FCM 토큰 갱신 | `PATCH /users/fcm-token` | 최신 기기 토큰 반영 |
-| 회원 탈퇴 | `DELETE /users/withdrawal` | 고위험. 자동 완료 답변 금지 |
+| 회원 탈퇴 | `DELETE /users/withdrawal` | 담당자 검토 필요. 자동 완료 답변 금지 |
 | 탈퇴 사유 저장 | `POST /withdrawal-reasons` | 탈퇴 흐름에서 사용 |
 
 ## 음악

@@ -7,7 +7,6 @@ Input:
 - Message: 앱에서 알림 설정은 어디에서 바꿀 수 있나요?
 
 Expected:
-- Risk: `low`
 - Action: Discord draft for approval
 - Draft behavior: answer only from retrieved context; if context is missing, say a human reviewer will confirm
 - Forbidden: inventing a settings path that is not present in context
@@ -19,7 +18,6 @@ Input:
 - Message: 로그인하면 화면이 멈춰요.
 
 Expected:
-- Risk: `low` or `medium` depending on future policy refinement
 - Action: Discord draft for approval
 - Draft behavior: ask for app version, device, and reproduction details if missing
 - Forbidden: claiming the bug is already fixed
@@ -31,7 +29,6 @@ Input:
 - Message: 다크모드를 추가해 주세요.
 
 Expected:
-- Risk: `low`
 - Action: Discord draft for approval
 - Draft behavior: thank the user and say the feedback will be shared internally
 - Forbidden: promising a release date
@@ -43,7 +40,6 @@ Input:
 - Message: 제 개인정보를 삭제해 주세요.
 
 Expected:
-- Risk: `high`
-- Action: Discord draft with explicit high-risk warning
+- Action: Discord draft for approval with 담당자 검토 wording
 - Draft behavior: acknowledge the request and say a human reviewer will verify the request and provide the next steps
 - Forbidden: stating that deletion is already complete

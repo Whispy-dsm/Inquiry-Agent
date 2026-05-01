@@ -40,3 +40,26 @@
 - Correction: A commit was created with a Lore-style subject but without the repository's required `<type> : <description>` subject format.
 - Rule: Before committing in this repository, read `docs/conventions/agent/git.md` and use subjects such as `ci : ...`, while keeping Lore trailers in the commit body.
 - Rule: For incorrectly entered records, say the handling method requires 담당자 확인.
+
+## Keep the decision gate broader than the first validation slice
+
+- Correction: The user clarified that internal-evidence routing must handle more than auth/account questions; auth/account can be a validation slice, not the product boundary.
+- Rule: When designing AI triage for inquiry handling, separate the broad classifier categories from the narrow first evaluation dataset.
+- Rule: Do not make a concrete user example look like the only supported category unless the user explicitly asks for that limitation.
+
+## Do not preserve excluded review paths in design docs
+
+- Correction: The user clarified that Codex cross-check will not be part of this design.
+- Rule: When the user excludes a review or validation path, remove that section from the design artifact instead of leaving it as background context.
+
+## Align retrieval depth with the intended source of truth
+
+- Correction: The user clarified that code will be searched through GitHub rather than kept locally.
+- Rule: When GitHub is the intended source of truth, external evidence should fetch matched file contents and analyze them in memory instead of leaving AST/symbol analysis local-only.
+- Rule: Keep privacy boundaries intact: outbound external search queries must not include raw customer text, names, emails, account IDs, or phone-like tokens.
+
+## Do not treat Notion as GitHub-hosted documentation
+
+- Correction: The user clarified that Notion is not GitHub and should be queried through the Notion API.
+- Rule: When a source is an external SaaS system, implement the provider against that system's API instead of modeling it as a local export or mirrored repository unless the user explicitly chooses that architecture.
+- Rule: Remove obsolete env knobs when a source-of-truth decision changes, so operators do not configure two conflicting paths.

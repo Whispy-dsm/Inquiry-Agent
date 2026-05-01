@@ -541,3 +541,280 @@ Verification: focused Discord/webhook tests, `npm run typecheck`, `npm test`, `n
 - Fix: edit modal submit now sends the edited email, writes the same Sheet audit fields, then edits the original review card to append the sent result and remove buttons.
 - Verification: focused Discord/worker tests, `npm run typecheck`, full `npm test` (17 files / 58 tests), `npm run build`, and `git diff --check` passed.
 - Remaining risks: `npm run lint` is still blocked by the repository's existing missing ESLint v9 `eslint.config.*` file.
+
+## Internal Evidence Router
+
+### Plan
+
+- [x] Create Ralph grounding artifacts under `.omx/context` and `.omx/plans`.
+- [x] Add domain types for route decisions, evidence sources, conflicts, confidence, and review packets.
+- [x] Add local filesystem evidence providers for Backend, Flutter, and Notion-export paths with fail-closed behavior.
+- [x] Extend Gemini draft generation to optionally route inquiries, collect evidence, and attach review packets.
+- [x] Render evidence review packets in Discord without changing existing approve/edit/reject actions.
+- [x] Add env parsing and worker wiring for opt-in router enablement and evidence source paths.
+- [x] Add focused tests, then run full test/typecheck/build/diff verification.
+
+### Review
+
+- Changed files:
+  - `src/domain/evidence.ts`
+  - `src/domain/inquiry.ts`
+  - `src/ai/internalEvidence.ts`
+  - `src/ai/geminiDraftGenerator.ts`
+  - `src/discord/renderInquiryMessage.ts`
+  - `src/config/env.ts`
+  - `src/worker.ts`
+  - `tests/ai/internalEvidence.test.ts`
+  - `tests/ai/geminiDraftRuntime.test.ts`
+  - `tests/discord/renderInquiryMessage.test.ts`
+  - `tests/config/env.test.ts`
+  - `tests/worker.test.ts`
+  - `docs/runbook.md`
+  - `docs/운영-플로우-및-env-설정-가이드.md`
+  - `docker-compose.yml`
+  - `docker-stack.yml`
+  - `.omx/context/internal-evidence-router-20260429T063207Z.md`
+  - `.omx/plans/prd-internal-evidence-router.md`
+  - `.omx/plans/test-spec-internal-evidence-router.md`
+- Simplifications made:
+  - kept the router opt-in behind `ENABLE_INTERNAL_EVIDENCE_ROUTER=false` by default
+  - used bounded local file search instead of adding GitHub/Notion API dependencies
+  - made Backend/Flutter/Notion source failures fail closed as `unavailable` evidence
+  - preserved the default Gemini prompt and normal Discord card when the router is disabled or route is `answer_from_rag`
+  - removed post-review slop: no unused match path field and no trailing blank line on normal Discord cards
+- Verification:
+  - focused router tests: `npm run test -- tests/ai/internalEvidence.test.ts tests/ai/geminiDraftRuntime.test.ts tests/discord/renderInquiryMessage.test.ts tests/config/env.test.ts tests/worker.test.ts` -> 5 files / 23 tests passed
+  - post-deslop focused tests: `npm run test -- tests/ai/internalEvidence.test.ts tests/discord/renderInquiryMessage.test.ts` -> 2 files / 9 tests passed
+  - `npm run typecheck` -> passed
+  - `npm run test` -> 18 files / 75 tests passed
+  - `npm run build` -> passed
+  - `git diff --check` -> passed
+  - `docker compose -f docker-compose.yml config` and `docker compose -f docker-stack.yml config` rendered internal evidence env defaults
+  - architect verification -> APPROVED after fixes and post-deslop check
+- Remaining risks:
+  - `npm run lint` is still blocked by the repository's existing missing ESLint v9 `eslint.config.*`
+  - Notion support is local/exported document search only; live Notion API integration is not included
+  - enabled router adds one Gemini route call before draft generation
+  - `ENABLE_FALLBACK_POLLING` deployment-template default changes were already present in the dirty worktree and were treated as separate context
+
+## External, AST, Embedding Evidence Router
+
+### Plan
+
+- [x] Create Ralph grounding artifacts under `.omx/context` and `.omx/plans`.
+- [x] Add external GitHub code search provider with fail-closed behavior.
+- [x] Add AST/symbol-aware local code scoring without new dependencies.
+- [x] Add optional Gemini embedding rerank for evidence candidates.
+- [x] Wire env, worker, docs, compose templates, and Discord/prompt metadata.
+- [x] Fix architect findings: sanitize GitHub external queries and distinguish compiler AST from heuristic symbol matches.
+- [x] Add focused regression tests and run full verification.
+
+### Review
+
+- Changed files:
+  - `src/domain/evidence.ts`
+  - `src/ai/internalEvidence.ts`
+  - `src/ai/geminiDraftGenerator.ts`
+  - `src/discord/renderInquiryMessage.ts`
+  - `src/config/env.ts`
+  - `src/worker.ts`
+  - `tests/ai/internalEvidence.test.ts`
+  - `tests/ai/geminiDraftRuntime.test.ts`
+  - `tests/discord/renderInquiryMessage.test.ts`
+  - `tests/config/env.test.ts`
+  - `tests/worker.test.ts`
+  - `docker-compose.yml`
+  - `docker-stack.yml`
+  - `docs/runbook.md`
+  - `docs/운영-플로우-및-env-설정-가이드.md`
+  - `docs/reports/internal-evidence-router-implementation-report-20260429.md`
+  - `.omx/context/external-ast-embedding-evidence-router-20260429T082648Z.md`
+  - `.omx/plans/prd-external-ast-embedding-evidence-router.md`
+  - `.omx/plans/test-spec-external-ast-embedding-evidence-router.md`
+- Simplifications made:
+  - kept external GitHub search and embedding rerank opt-in behind existing router enablement
+  - avoided new dependencies; TypeScript compiler AST is used when available and heuristic fallback is labeled `symbol`
+  - made GitHub external queries privacy-filtered by fixed domain taxonomy instead of raw customer text
+  - prevented GitHub-only source configuration from also emitting local-path `unavailable` evidence
+  - kept embedding rerank bounded to existing candidates and fail-open to original ranking
+- Verification:
+  - focused router tests: `npm run test -- tests/ai/internalEvidence.test.ts tests/ai/geminiDraftRuntime.test.ts tests/discord/renderInquiryMessage.test.ts tests/config/env.test.ts tests/worker.test.ts` -> 5 files / 31 tests passed
+  - post-deslop `npm run test` -> 18 files / 84 tests passed
+  - post-deslop `npm run typecheck` -> passed
+  - post-deslop `npm run build` -> passed
+  - post-deslop `git diff --check` -> passed with CRLF warnings only
+  - architect verification -> APPROVED after privacy and signal-label fixes
+  - `docker compose ... config` rendered the new env keys; local secret values were not used in documentation or final reporting
+- Remaining risks:
+  - `npm run lint` remains blocked by the repository's existing missing ESLint v9 `eslint.config.*` file
+  - external GitHub search requires read access/token for private repositories and may still be rate-limited
+  - live Notion API search is still not implemented; Notion remains local/exported docs plus optional GitHub-hosted policy docs
+
+## GitHub-Only AST/Symbol Evidence
+
+### Plan
+
+- [x] Fetch matched GitHub file contents after code search results.
+- [x] Run in-memory AST/symbol analysis on fetched GitHub file bodies.
+- [x] Keep external query privacy guard: no raw customer tokens in GitHub search queries.
+- [x] Move existing TypeScript compiler dependency into runtime dependencies for production AST support.
+- [x] Run focused and full verification.
+
+### Review
+
+- Changed files:
+  - `src/ai/internalEvidence.ts`
+  - `tests/ai/internalEvidence.test.ts`
+  - `package.json`
+  - `package-lock.json`
+  - `docs/runbook.md`
+  - `docs/운영-플로우-및-env-설정-가이드.md`
+  - `docs/reports/internal-evidence-router-implementation-report-20260429.md`
+  - `tasks/lessons.md`
+  - `tasks/todo.md`
+- Simplifications made:
+  - reused GitHub search result `url` instead of constructing another endpoint path
+  - kept raw customer text local-only; outbound GitHub query still uses fixed safe taxonomy terms
+  - reused the local `extractCodeSymbols` path for fetched GitHub file bodies
+  - moved existing `typescript` to runtime dependency instead of adding a new AST package
+- Verification:
+  - focused router tests: `npm run test -- tests/ai/internalEvidence.test.ts tests/ai/geminiDraftRuntime.test.ts tests/discord/renderInquiryMessage.test.ts tests/config/env.test.ts tests/worker.test.ts` -> 5 files / 33 tests passed
+  - `npm run test` -> 18 files / 86 tests passed
+  - `npm run typecheck` -> passed
+  - `npm run build` -> passed
+  - `git diff --check` -> passed with CRLF warnings only
+  - `npm run lint` -> blocked by existing missing ESLint v9 `eslint.config.*`
+- Remaining risks:
+  - GitHub content fetch adds one contents API request per matched file, so rate limits matter more in GitHub-only mode
+  - fetched file analysis is bounded by file size and skips files above the limit
+
+## External-Only Evidence Sources With Notion API
+
+### Plan
+
+- [x] Create Ralph context snapshot, PRD, and test spec.
+- [x] Remove general local filesystem evidence provider from runtime wiring.
+- [x] Remove backend/flutter/notion local path env configuration from runtime env and deployment templates.
+- [x] Remove GitHub-hosted Notion repo configuration from runtime env and deployment templates.
+- [x] Add live Notion API evidence provider using REST fetch without a new dependency.
+- [x] Add focused tests for Notion search, configured page IDs, failure handling, and privacy-safe query terms.
+- [x] Run full verification and architect review.
+
+### Review
+
+- Changed files so far:
+  - `src/ai/internalEvidence.ts`
+  - `src/config/env.ts`
+  - `src/worker.ts`
+  - `docker-compose.yml`
+  - `docker-stack.yml`
+  - `tests/ai/internalEvidence.test.ts`
+  - `tests/config/env.test.ts`
+  - `tests/worker.test.ts`
+  - `docs/runbook.md`
+  - `docs/운영-플로우-및-env-설정-가이드.md`
+  - `docs/reports/internal-evidence-router-implementation-report-20260429.md`
+  - `.omx/context/github-notion-provider-20260429T123335Z.md`
+  - `.omx/plans/prd-github-notion-provider.md`
+  - `.omx/plans/test-spec-github-notion-provider.md`
+- Verification so far:
+  - `npm run test -- tests/ai/internalEvidence.test.ts tests/config/env.test.ts tests/worker.test.ts` -> 3 files / 24 tests passed
+  - `npm run typecheck` -> passed
+  - first full `npm run test` -> 1 GitHub AST test failed because TypeScript compiler import hit the old 250ms fallback under full-suite load
+- Follow-up fix:
+  - increased the compiler import timeout to 2000ms so production AST support is stable now that `typescript` is a runtime dependency
+  - preserved traversal into child blocks even when a Notion parent block has no text
+- Final verification:
+  - `npm run test -- tests/ai/internalEvidence.test.ts tests/config/env.test.ts tests/worker.test.ts` -> 3 files / 25 tests passed
+  - `npm run typecheck` -> passed
+  - `npm run test` -> 18 files / 86 tests passed
+  - `npm run build` -> passed
+  - `git diff --check` -> passed with CRLF warnings only
+  - `npm run lint` -> blocked by existing missing ESLint v9 `eslint.config.*`
+- Architect review:
+  - first review -> REJECTED
+  - blocker 1: `escalate_manual` could still call evidence providers if the model returned requested sources
+  - blocker 2: raw internal evidence source/snippet data was forwarded into the Gemini draft prompt
+- Fixes after rejection:
+  - `escalate_manual` now clears requested sources and returns manual review without provider calls
+  - draft prompt evidence now omits source URLs/paths and sends a redacted bounded evidence summary instead of raw snippet/source fields
+  - added regression tests for both behaviors
+  - second architect review -> APPROVED
+
+## Compact Handoff Document
+
+### Plan
+
+- [x] Create a PRD-level compact handoff document under `docs/reports`.
+- [x] Capture architecture, runtime flow, configuration, verification evidence, and next-step checklist.
+- [x] Include enough context for a new agent or developer to continue without replaying the full session.
+- [x] Run lightweight documentation verification after the file is created.
+
+### Review
+
+- Created `docs/reports/compact-handoff-internal-evidence-router-20260429.md`.
+- Captured purpose, requirements, runtime flow, source selection, GitHub/Notion provider behavior, env setup, verification evidence, risks, and next operator checklist.
+- Verification: `git diff --check -- docs/reports/compact-handoff-internal-evidence-router-20260429.md tasks/todo.md` passed with the existing CRLF warning for `tasks/todo.md`.
+
+## Risk Display Removal
+
+### Plan
+
+- [x] Remove the deterministic risk classifier and risk fields from runtime domain types.
+- [x] Remove risk display from Discord review messages and stop writing `risk_level` / `risk_reasons` to Sheets.
+- [x] Update tests and active RAG docs so review guidance no longer depends on a risk label.
+- [x] Run focused tests, typecheck, build, and diff hygiene checks.
+
+### Review
+
+- Removed `src/domain/risk.ts` and `tests/domain/risk.test.ts`.
+- Removed `risk` from `InquiryDraft`, Gemini draft parsing, Discord review rendering, workflow Sheet writes, and managed Sheet columns.
+- Updated active RAG/eval docs to use "담당자 검토" / "자동 확정 금지" wording instead of a displayed risk label.
+- Stabilized the GitHub AST evidence test by increasing the TypeScript compiler import timeout from 2s to 10s after full-suite verification exposed the existing timing flake.
+- Verification:
+  - `npm run test -- tests/ai/geminiDraftGenerator.test.ts tests/ai/geminiDraftRuntime.test.ts tests/discord/renderInquiryMessage.test.ts tests/discord/discordBot.test.ts tests/workflow/inquiryWorkflow.test.ts tests/sheets/googleSheetsClient.test.ts tests/ai/contextProvider.test.ts` -> 7 files / 35 tests passed.
+  - `npm run test -- tests/ai/internalEvidence.test.ts` -> 1 file / 16 tests passed.
+  - `npm run test` -> 17 files / 85 tests passed.
+  - `npm run typecheck` -> passed.
+  - `npm run build` -> passed.
+  - `git diff --check` -> passed with CRLF warnings only.
+  - Active runtime/test/RAG scope search for `risk`, `Risk`, `classifyRisk`, `risk_level`, `risk_reasons`, `고위험`, `위험도`, `high risk` -> no matches.
+- Remaining risks: `npm run lint` remains blocked by the repository's existing missing ESLint v9 `eslint.config.*` file.
+
+## SQLite Knowledge Circuit
+
+### Plan
+
+- [x] Create Ralph context, PRD, and test-spec artifacts for the SQLite-backed knowledge circuit.
+- [x] Add knowledge circuit domain types and a metadata-only store abstraction.
+- [x] Implement an in-memory store and optional `node:sqlite` store with schema initialization and cleanup.
+- [x] Add a circuit service that upserts evidence metadata and reorders/annotates evidence using stored feedback/edges.
+- [x] Wire env, worker, Docker volume defaults, and docs.
+- [x] Add focused tests and run full verification.
+
+### Review
+
+- Added a metadata-only knowledge circuit layer:
+  - `src/domain/knowledgeCircuit.ts`
+  - `src/ai/knowledgeCircuitStore.ts`
+  - `src/ai/knowledgeCircuit.ts`
+- The circuit stores evidence node metadata, content hashes, explicit relationships, and Discord review feedback weights in SQLite when `ENABLE_KNOWLEDGE_CIRCUIT=true`.
+- Raw customer inquiry text, evidence snippet tokens, full Notion page content, full GitHub file content, and Gemini prompt bodies are not persisted by the circuit.
+- Discord approve/edit/reject actions now record feedback against the evidence refs stored with the review row, and stale feedback is ignored when source content hashes change.
+- Integrated the circuit after internal evidence retrieval/rerank so Gemini still receives one draft-generation call path, but evidence can be annotated/reordered by stored circuit signals.
+- Added Docker Compose/Swarm `/app/data` named volume defaults for persistent SQLite storage.
+- First architect review rejected the initial version for dead feedback wiring, snippet-derived metadata persistence, automatic support edges, stale feedback, and max-hop mismatch; all five were fixed.
+- Second architect review found no blocking issues.
+- Verification:
+  - `npm run test -- tests/ai/knowledgeCircuit.test.ts tests/ai/internalEvidence.test.ts tests/config/env.test.ts tests/worker.test.ts` -> 4 files / 31 tests passed.
+  - `npm run typecheck` -> passed.
+  - `npm run build` -> passed.
+  - `npm run test` -> 18 files / 93 tests passed.
+  - `npm run test -- tests/ai/knowledgeCircuit.test.ts` -> 1 file / 6 tests passed.
+  - `git diff --check` -> passed with CRLF warnings only.
+  - `docker compose -f docker-compose.yml config` -> passed.
+  - `docker stack config -c docker-stack.yml` with dummy required env values -> passed.
+  - `npm run lint` -> blocked by existing missing ESLint v9 `eslint.config.*`.
+- Remaining risks:
+  - `node:sqlite` is still experimental in Node 22 and emits an `ExperimentalWarning`.
+  - Lint cannot run until the repo adds an ESLint v9 flat config.

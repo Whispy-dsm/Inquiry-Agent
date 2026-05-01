@@ -42,7 +42,7 @@
 ## 현재 Inquiry-Agent 근거
 
 - 문의 유형: `APP_ERROR`, `SERVICE_QUESTION`, `SUGGESTION`, `OTHER`.
-- 위험도: `OTHER`는 기본 high. 개인정보/삭제/탈퇴, 결제/환불/구독, 법적/분쟁, 보안/해킹/유출 키워드는 high.
+- 담당자 검토 기준: `OTHER`와 개인정보/삭제/탈퇴, 결제/환불/구독, 법적/분쟁, 보안/해킹/유출 키워드는 담당자 확인 문구로 처리한다.
 - 처리 흐름: Google Form/Sheet row -> AI draft -> Discord 승인 -> Gmail 발송.
 - 현재 정적 context provider는 모든 문의에 동일한 문자열 배열을 넣을 수 있는 구조다.
 
