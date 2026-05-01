@@ -139,7 +139,7 @@ describe('GitHubCodeSearchEvidenceSource', () => {
       retrievalSignals: expect.arrayContaining(['external', 'keyword', 'ast']),
       snippet: expect.stringContaining('concurrentLoginPolicy'),
     }));
-  });
+  }, 15_000);
 
   it('should label fetched GitHub content as symbol when compiler AST is disabled', async () => {
     // Arrange

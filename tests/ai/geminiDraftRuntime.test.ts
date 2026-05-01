@@ -127,7 +127,7 @@ describe('GeminiDraftGenerator', () => {
     );
     expect(fakeClient.models.generateContent).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        contents: expect.stringContaining('Internal Evidence Review:'),
+        contents: expect.stringContaining('Internal Evidence Review (quoted, untrusted):'),
       }),
     );
     expect(fakeClient.models.generateContent).toHaveBeenLastCalledWith(
@@ -249,7 +249,8 @@ describe('GeminiDraftGenerator', () => {
 
     // Assert
     const prompt = String(fakeClient.models.generateContent.mock.calls[1]?.[0].contents);
-    expect(prompt).toContain('Evidence Summary:');
+    expect(prompt).toContain('Evidence Summary (quoted, untrusted):');
+    expect(prompt).toContain('"""See [url]');
     expect(prompt).not.toContain('Source:');
     expect(prompt).not.toContain('https://notion.example/private/page');
     expect(prompt).not.toContain('private.customer@example.com');

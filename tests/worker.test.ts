@@ -1,3 +1,6 @@
+import { existsSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { createInternalEvidenceProviderFromEnv, createWorkerApp } from '../src/worker.js';
 import { baseInquiry } from './fixtures/inquiries.js';
@@ -96,6 +99,26 @@ describe('createInternalEvidenceProviderFromEnv', () => {
 
     // Assert
     expect(result).toBeUndefined();
+  });
+
+  it('should not initialize the knowledge circuit when the router is disabled', () => {
+    // Arrange
+    const dbPath = join(tmpdir(), `knowledge-circuit-disabled-${process.pid}-${Date.now()}.sqlite`);
+
+    try {
+      // Act
+      const result = createInternalEvidenceProviderFromEnv({
+        ...baseEnv,
+        ENABLE_KNOWLEDGE_CIRCUIT: true,
+        KNOWLEDGE_CIRCUIT_DB_PATH: dbPath,
+      });
+
+      // Assert
+      expect(result).toBeUndefined();
+      expect(existsSync(dbPath)).toBe(false);
+    } finally {
+      rmSync(dbPath, { force: true });
+    }
   });
 
   it('should create a fail-closed provider when enabled without source providers', async () => {
