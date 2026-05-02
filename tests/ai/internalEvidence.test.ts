@@ -26,6 +26,15 @@ const notionRouteDecision: EvidenceRouteDecision = {
   needsCheck: 'Notion policy should be checked.',
 };
 
+const notificationRouteDecision: EvidenceRouteDecision = {
+  route: 'need_multi_source_evidence',
+  reason: 'Check Flutter notification permission state and Backend FCM push delivery.',
+  requestedSources: ['backend', 'flutter', 'notion'],
+  confidence: 'medium',
+  needsCheck: 'Verify notification permission and push delivery evidence.',
+  conflicts: [],
+};
+
 describe('GitHubCodeSearchEvidenceSource', () => {
   it('should convert GitHub code search results into external evidence items', async () => {
     // Arrange
@@ -260,6 +269,108 @@ describe('GitHubCodeSearchEvidenceSource', () => {
       }),
     ]);
   });
+
+  it('should ignore low-signal task documents for notification evidence', async () => {
+    // Arrange
+    const fetchFn = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        items: [
+          {
+            path: 'tasks/todo.md',
+            html_url: 'https://github.example/whispy/backend/blob/main/tasks/todo.md',
+            repository: { full_name: 'whispy/backend' },
+            text_matches: [{ fragment: 'notification push FCM investigation task' }],
+          },
+        ],
+      }),
+    });
+    const target = new GitHubCodeSearchEvidenceSource(
+      'backend',
+      [{ owner: 'whispy', repo: 'backend' }],
+      'implementation-behavior',
+      {
+        apiBaseUrl: 'https://github.example/api',
+        fetchFn,
+      },
+    );
+
+    // Act
+    const result = await target.findEvidence(
+      { ...baseInquiry, message: 'App notification is enabled but push does not arrive.' },
+      notificationRouteDecision,
+    );
+
+    // Assert
+    expect(result).toEqual([
+      expect.objectContaining({
+        sourceType: 'backend',
+        status: 'empty',
+        source: 'github:whispy/backend',
+      }),
+    ]);
+    expect(fetchFn).toHaveBeenCalledOnce();
+  });
+
+  it('should keep fetched notification implementation evidence when focused terms match', async () => {
+    // Arrange
+    const content = [
+      'export function sendFcmPushNotification(deviceToken: string) {',
+      '  return firebaseMessaging.send({ token: deviceToken });',
+      '}',
+    ].join('\n');
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          items: [
+            {
+              path: 'src/notifications/fcm.ts',
+              url: 'https://github.example/api/repos/whispy/backend/contents/src/notifications/fcm.ts',
+              html_url: 'https://github.example/whispy/backend/blob/main/src/notifications/fcm.ts',
+              repository: { full_name: 'whispy/backend' },
+              text_matches: [{ fragment: 'sendFcmPushNotification' }],
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          type: 'file',
+          encoding: 'base64',
+          size: Buffer.byteLength(content, 'utf8'),
+          content: Buffer.from(content, 'utf8').toString('base64'),
+        }),
+      });
+    const target = new GitHubCodeSearchEvidenceSource(
+      'backend',
+      [{ owner: 'whispy', repo: 'backend' }],
+      'implementation-behavior',
+      {
+        apiBaseUrl: 'https://github.example/api',
+        fetchFn,
+      },
+    );
+
+    // Act
+    const result = await target.findEvidence(
+      { ...baseInquiry, message: 'App notification is enabled but push does not arrive.' },
+      notificationRouteDecision,
+    );
+
+    // Assert
+    expect(result[0]).toEqual(expect.objectContaining({
+      sourceType: 'backend',
+      status: 'found',
+      source: 'https://github.example/whispy/backend/blob/main/src/notifications/fcm.ts',
+      snippet: expect.stringContaining('sendFcmPushNotification'),
+      retrievalSignals: expect.arrayContaining(['external', 'keyword', 'ast']),
+    }));
+  });
 });
 
 describe('NotionApiEvidenceSource', () => {
@@ -395,7 +506,7 @@ describe('NotionApiEvidenceSource', () => {
 
     // Assert
     const body = JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body));
-    expect(body.query).toContain('policy');
+    expect(body.query).toContain('session');
     expect(body.query).toContain('login');
     expect(body.query).not.toContain('private.customer');
     expect(body.query).not.toContain('example.com');
@@ -513,6 +624,53 @@ describe('NotionApiEvidenceSource', () => {
       status: 'found',
       snippet: expect.stringContaining('nested content'),
     }));
+  });
+
+  it('should not promote unrelated Notion pages for notification evidence', async () => {
+    // Arrange
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          results: [
+            notionPage('page-1', 'Whispy breathing music guide', 'https://notion.example/breathing'),
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          results: [
+            notionHeading('block-1', 'Fast breathing feature'),
+            notionParagraph('block-2', 'Music and breathing exercises are documented here.'),
+          ],
+        }),
+      });
+    const target = new NotionApiEvidenceSource({
+      token: 'notion-token',
+      apiBaseUrl: 'https://notion.example',
+      fetchFn,
+    });
+
+    // Act
+    const result = await target.findEvidence(
+      { ...baseInquiry, message: 'App notification is enabled but push does not arrive.' },
+      notificationRouteDecision,
+    );
+
+    // Assert
+    const body = JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body));
+    expect(body.query).toContain('notification');
+    expect(body.query).toContain('push');
+    expect(result).toEqual([
+      expect.objectContaining({
+        sourceType: 'notion',
+        status: 'empty',
+        snippet: 'No Notion page content matched the routed policy inquiry.',
+      }),
+    ]);
   });
 });
 
