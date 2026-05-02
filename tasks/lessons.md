@@ -105,3 +105,9 @@
 - Correction: The user asked whether a successfully parsed inquiry result was normal, and the remaining defect was unrelated Notion/GitHub evidence being promoted as `found`.
 - Rule: Treat valid JSON parsing, route selection, and retrieved-evidence relevance as separate quality gates.
 - Rule: For external evidence search, put intent-specific safe terms ahead of broad source terms, and do not let operational task files become product or implementation evidence.
+
+## Preserve optional form fields in customer drafts
+
+- Correction: The user pointed out that device model or OS information may already be present in the inquiry form, so drafts should not blindly ask for both again.
+- Rule: Map optional form metadata that can affect a customer reply into the inquiry model and include it in the draft prompt.
+- Rule: When only part of a troubleshooting detail is present, ask only for the missing part instead of repeating information the customer already provided.

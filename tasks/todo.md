@@ -1069,3 +1069,27 @@ Related issue: #13
   - `git diff --check` -> passed with CRLF warnings only.
   - `npm run lint` -> blocked by existing missing ESLint v9 `eslint.config.*`.
 - Remaining risks: `Google`, `Discord`, `Gemini`, `embedding`, `hash` 같은 고유명사/기술 용어는 한국어 문장 안에 그대로 남겨 두었습니다.
+
+## Preserve Provided Device Info In Drafts
+
+### Plan
+
+- [x] Map the optional Google Form device-info column into the inquiry model.
+- [x] Include provided device info in the draft prompt and instruct the model to ask only for missing device details.
+- [x] Align RAG guidance so generic troubleshooting does not re-request already provided model/OS information.
+- [x] Add focused tests for Sheet mapping and prompt construction.
+- [x] Run focused tests, typecheck, build, and diff hygiene.
+
+### Review
+
+- Changed files: `src/domain/inquiry.ts`, `src/sheets/sheetColumns.ts`, `src/ai/geminiDraftGenerator.ts`, `src/ai/prompt.ts`, `src/discord/renderInquiryMessage.ts`, `docs/rag/answer-policy.md`, `docs/rag/product-knowledge.md`, `docs/rag/inquiry-playbooks.md`, `tests/sheets/sheetColumns.test.ts`, `tests/ai/geminiDraftGenerator.test.ts`, `tests/discord/renderInquiryMessage.test.ts`, `tasks/lessons.md`, `tasks/todo.md`.
+- Root cause: the form already had an optional device-info column, but the inquiry model and draft prompt only carried the main message, so the model could ask again for OS/model information already supplied outside the message field.
+- Simplifications made: preserved the existing free-text form field as one optional `deviceInfo` string instead of adding fragile model/OS parsing.
+- Verification:
+  - `npm run test -- tests/sheets/sheetColumns.test.ts tests/ai/geminiDraftGenerator.test.ts tests/discord/renderInquiryMessage.test.ts` -> 3 files / 15 tests passed.
+  - `npm run test` -> 18 files / 110 tests passed.
+  - `npm run typecheck` -> passed.
+  - `npm run build` -> passed.
+  - `git diff --check` -> passed with CRLF warnings only.
+  - `npm run lint` -> blocked by existing missing ESLint v9 `eslint.config.*`.
+- Remaining risks: `deviceInfo` is still a free-text field, so the model decides whether `One UI 6` is OS-only; if exact model/OS separation becomes important, the form should split them into separate columns.
