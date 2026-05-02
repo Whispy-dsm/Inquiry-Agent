@@ -9,6 +9,11 @@ import {
 import type { GmailClient } from '../email/gmailClient.js';
 import type { GoogleSheetsClient } from '../sheets/googleSheetsClient.js';
 import type { InquiryLock } from '../workflow/inquiryLock.js';
+import {
+  clearCachedEvidenceReview,
+  getCachedEvidenceReview,
+  replaceEvidenceReviewSection,
+} from './renderInquiryMessage.js';
 
 type InquiryReview = NonNullable<Awaited<ReturnType<GoogleSheetsClient['findInquiryReview']>>>;
 
@@ -43,6 +48,11 @@ export async function handleReviewButton(
 
   if (!action || !inquiryId) {
     await interaction.reply({ content: '잘못된 액션입니다.', ephemeral: true });
+    return;
+  }
+
+  if (action === 'evidenceOpen' || action === 'evidenceClose') {
+    await handleEvidenceToggle(interaction, inquiryId, action === 'evidenceOpen');
     return;
   }
 
@@ -119,6 +129,7 @@ export async function handleReviewButton(
         handled_at: new Date().toISOString(),
       });
       await recordReviewFeedback(deps, review, 'rejected');
+      clearCachedEvidenceReview(inquiryId);
 
       await interaction.editReply({
         content: `${interaction.message.content}\n\n처리 결과: Rejected by <@${holder}>`,
@@ -167,6 +178,7 @@ export async function handleReviewButton(
           gmail_message_id: sent.messageId,
         });
         await recordReviewFeedback(deps, review, 'approved');
+        clearCachedEvidenceReview(inquiryId);
       } catch {
         await interaction.followUp({
           content: '이메일은 발송됐지만 시트 상태 업데이트에 실패했습니다. 중복 발송을 막기 위해 상태를 확인해 주세요.',
@@ -302,6 +314,7 @@ export async function handleEditSubmitSend(
     }
 
     if (shouldUpdateReviewMessage) {
+      clearCachedEvidenceReview(edit.inquiryId);
       await interaction.editReply({
         content: `${interaction.message.content}\n\n처리 결과: Sent after edit by <@${edit.handledBy}>`,
         components: [],
@@ -313,6 +326,29 @@ export async function handleEditSubmitSend(
   } finally {
     deps.lock.release(edit.inquiryId, edit.handledBy);
   }
+}
+
+async function handleEvidenceToggle(
+  interaction: ButtonInteraction,
+  inquiryId: string,
+  expanded: boolean,
+): Promise<void> {
+  const review = getCachedEvidenceReview(inquiryId);
+
+  if (!review) {
+    await interaction.reply({
+      content: '내부 근거 정보를 다시 불러올 수 없습니다. 새 검토 메시지를 생성한 뒤 다시 시도해 주세요.',
+      ephemeral: true,
+    });
+    return;
+  }
+
+  await interaction.update(replaceEvidenceReviewSection(
+    interaction.message.content,
+    inquiryId,
+    review,
+    expanded,
+  ));
 }
 
 async function recordReviewFeedback(
