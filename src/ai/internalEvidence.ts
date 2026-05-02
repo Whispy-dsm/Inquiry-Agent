@@ -13,17 +13,17 @@ import { contentHash } from './knowledgeCircuitStore.js';
 
 type InternalEvidenceSourceType = Exclude<EvidenceSourceType, 'rag'>;
 
-/** Finds reviewer-facing evidence for a routed inquiry. */
+/** 라우팅 결과에 따라 Discord 검토자가 확인할 내부 근거를 수집하는 상위 포트입니다. */
 export interface InternalEvidenceProvider {
   findEvidence(inquiry: Inquiry, decision: EvidenceRouteDecision): Promise<EvidenceItem[]>;
 }
 
-/** Finds evidence from one concrete source such as GitHub search or Notion API. */
+/** GitHub 검색, Notion API처럼 하나의 실제 출처에서 근거를 찾는 제공자 포트입니다. */
 export interface EvidenceSourceProvider {
   findEvidence(inquiry: Inquiry, decision: EvidenceRouteDecision): Promise<EvidenceItem[]>;
 }
 
-/** Optional semantic reranker for evidence candidates. */
+/** 이미 수집된 근거 후보를 의미 유사도 등으로 재정렬하는 선택적 재정렬 포트입니다. */
 export interface EvidenceReranker {
   rerank(query: string, items: EvidenceItem[]): Promise<EvidenceItem[]>;
 }
@@ -53,6 +53,12 @@ type FetchLike = (
   },
 ) => Promise<FetchResponseLike>;
 
+/**
+ * GitHub 코드 검색 기반 근거 제공자의 실행 옵션입니다.
+ *
+ * @remarks
+ * 테스트에서는 `fetchFn`을 주입하고, 운영에서는 토큰과 저장소 설정을 통해 GitHub REST API를 읽기 전용으로 호출합니다.
+ */
 export type GitHubCodeSearchEvidenceSourceOptions = {
   token?: string;
   apiBaseUrl?: string;
@@ -64,6 +70,12 @@ export type GitHubCodeSearchEvidenceSourceOptions = {
   useTypeScriptCompiler?: boolean;
 };
 
+/**
+ * Notion REST API 기반 근거 제공자의 실행 옵션입니다.
+ *
+ * @remarks
+ * `pageIds`가 있으면 검색 API 대신 지정된 페이지를 직접 읽고, 없으면 안전한 의도 검색어로 Notion 페이지 검색을 수행합니다.
+ */
 export type NotionApiEvidenceSourceOptions = {
   token?: string;
   apiBaseUrl?: string;
@@ -93,6 +105,12 @@ type EmbeddingClientLike = {
   };
 };
 
+/**
+ * Gemini embedding 재정렬기의 실행 옵션입니다.
+ *
+ * @remarks
+ * 근거 수집 범위를 넓히는 설정이 아니라, 이미 제한된 후보를 검토자에게 더 관련도 높은 순서로 보여주기 위한 설정입니다.
+ */
 export type GeminiEmbeddingEvidenceRerankerOptions = {
   apiKey: string;
   model: string;
@@ -108,7 +126,12 @@ type CompositeInternalEvidenceProviderOptions = {
 
 type EvidenceProviderMap = Partial<Record<InternalEvidenceSourceType, EvidenceSourceProvider | EvidenceSourceProvider[]>>;
 
-/** Searches configured GitHub repositories through the read-only code search API. */
+/**
+ * 설정된 GitHub 저장소를 읽기 전용 코드 검색 API로 조회해 구현 근거를 수집합니다.
+ *
+ * @remarks
+ * 검색 결과가 실제 문의 의도와 맞는지 다시 점수화하고, `tasks/` 같은 운영 문서는 구현 근거로 승격하지 않습니다.
+ */
 export class GitHubCodeSearchEvidenceSource implements EvidenceSourceProvider {
   private readonly apiBaseUrl: string;
   private readonly fetchFn: FetchLike;
@@ -188,7 +211,7 @@ export class GitHubCodeSearchEvidenceSource implements EvidenceSourceProvider {
       results.slice(0, this.maxResults).map((item) => this.toEvidenceItem(item, inquiry, decision)),
     );
 
-    return evidence;
+    return evidence.filter((item): item is EvidenceItem => item !== null);
   }
 
   private searchHeaders(): Record<string, string> {
@@ -217,10 +240,24 @@ export class GitHubCodeSearchEvidenceSource implements EvidenceSourceProvider {
     item: GitHubSearchItem,
     inquiry: Inquiry,
     decision: EvidenceRouteDecision,
-  ): Promise<EvidenceItem> {
+  ): Promise<EvidenceItem | null> {
+    if (isLowSignalGitHubPath(item.path)) {
+      return null;
+    }
+
     const fullName = item.repository?.full_name ?? 'unknown/repository';
     const source = item.html_url ?? `github:${fullName}/${item.path}`;
     const fragment = item.text_matches?.find((match) => typeof match.fragment === 'string')?.fragment;
+    const focusedTerms = buildFocusedEvidenceTerms(inquiry, decision);
+
+    if (!item.url && focusedTerms.length > 0) {
+      const searchResultScore = scoreSearchText(`${item.path}\n${fragment ?? ''}`.toLowerCase(), focusedTerms);
+
+      if (searchResultScore === 0) {
+        return null;
+      }
+    }
+
     const evidenceItem: EvidenceItem = {
       sourceType: this.sourceType,
       authority: this.authority,
@@ -269,13 +306,20 @@ export class GitHubCodeSearchEvidenceSource implements EvidenceSourceProvider {
     content: string,
     inquiry: Inquiry,
     decision: EvidenceRouteDecision,
-  ): Promise<EvidenceItem> {
+  ): Promise<EvidenceItem | null> {
     const terms = buildEvidenceTerms(inquiry, decision, this.sourceType);
     const symbolExtraction = await extractCodeSymbols(path, content, this.useTypeScriptCompiler);
+    const focusedTerms = buildFocusedEvidenceTerms(inquiry, decision);
+    const focusedKeywordScore = scoreSearchText(`${path}\n${content}`.toLowerCase(), focusedTerms);
+    const focusedSymbolScore = scoreSymbols(symbolExtraction.symbols, focusedTerms);
     const keywordScore = scoreSearchText(`${path}\n${content}`.toLowerCase(), terms);
     const symbolScore = scoreSymbols(symbolExtraction.symbols, terms);
     const score = (evidenceItem.score ?? 0) + keywordScore + symbolScore;
     const sourceContentHash = contentHash(`${this.sourceType}\n${evidenceItem.source}\n${evidenceItem.title}\n${path}\n${content}`);
+
+    if (focusedTerms.length > 0 && focusedKeywordScore === 0 && focusedSymbolScore === 0) {
+      return null;
+    }
 
     if (keywordScore === 0 && symbolScore === 0) {
       return {
@@ -321,7 +365,12 @@ export class GitHubCodeSearchEvidenceSource implements EvidenceSourceProvider {
   }
 }
 
-/** Searches product policy and feature definition pages through the Notion API. */
+/**
+ * Notion API로 제품 정책과 기능 정의 페이지를 조회해 정책 근거를 수집합니다.
+ *
+ * @remarks
+ * 검색어는 개인정보를 직접 포함하지 않는 safe term만 사용하며, 페이지 본문이 문의 의도와 맞지 않으면 `found`로 올리지 않습니다.
+ */
 export class NotionApiEvidenceSource implements EvidenceSourceProvider {
   private readonly apiBaseUrl: string;
   private readonly notionVersion: string;
@@ -349,10 +398,11 @@ export class NotionApiEvidenceSource implements EvidenceSourceProvider {
     }
 
     const terms = buildEvidenceTerms(inquiry, decision, 'notion');
+    const focusedTerms = buildFocusedEvidenceTerms(inquiry, decision);
     const safeTerms = buildExternalEvidenceTerms(inquiry, decision, 'notion').slice(0, this.maxSearchTerms);
 
     if (this.pageIds.length > 0) {
-      return this.fetchConfiguredPages(this.pageIds, terms);
+      return this.fetchConfiguredPages(this.pageIds, terms, focusedTerms);
     }
 
     const searchResults = await this.searchPages(safeTerms);
@@ -365,7 +415,7 @@ export class NotionApiEvidenceSource implements EvidenceSourceProvider {
       return [this.emptyItem('No Notion pages matched the routed policy inquiry.')];
     }
 
-    return this.fetchSearchResultPages(searchResults.items, terms);
+    return this.fetchSearchResultPages(searchResults.items, terms, focusedTerms);
   }
 
   private async searchPages(terms: string[]): Promise<{ items: NotionSearchResult[] } | { error: string }> {
@@ -389,14 +439,20 @@ export class NotionApiEvidenceSource implements EvidenceSourceProvider {
     return { items: notionSearchResults(response.payload).slice(0, this.maxResults) };
   }
 
-  private async fetchConfiguredPages(pageIds: string[], terms: string[]): Promise<EvidenceItem[]> {
-    const items = await Promise.all(pageIds.slice(0, this.maxResults).map((pageId) => this.fetchPageEvidence({ id: pageId }, terms)));
+  private async fetchConfiguredPages(pageIds: string[], terms: string[], focusedTerms: string[]): Promise<EvidenceItem[]> {
+    const items = await Promise.all(
+      pageIds.slice(0, this.maxResults).map((pageId) => this.fetchPageEvidence({ id: pageId }, terms, focusedTerms)),
+    );
 
     return this.normalizeNotionEvidence(items);
   }
 
-  private async fetchSearchResultPages(searchResults: NotionSearchResult[], terms: string[]): Promise<EvidenceItem[]> {
-    const items = await Promise.all(searchResults.map((result) => this.fetchPageEvidence(result, terms)));
+  private async fetchSearchResultPages(
+    searchResults: NotionSearchResult[],
+    terms: string[],
+    focusedTerms: string[],
+  ): Promise<EvidenceItem[]> {
+    const items = await Promise.all(searchResults.map((result) => this.fetchPageEvidence(result, terms, focusedTerms)));
 
     return this.normalizeNotionEvidence(items);
   }
@@ -411,7 +467,11 @@ export class NotionApiEvidenceSource implements EvidenceSourceProvider {
     return found.sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).slice(0, this.maxResults);
   }
 
-  private async fetchPageEvidence(page: NotionSearchResult, terms: string[]): Promise<EvidenceItem | null> {
+  private async fetchPageEvidence(
+    page: NotionSearchResult,
+    terms: string[],
+    focusedTerms: string[],
+  ): Promise<EvidenceItem | null> {
     const pageMetadata = page.title ? page : await this.fetchPageMetadata(page.id);
     const content = await this.fetchPageContent(page.id);
 
@@ -435,6 +495,13 @@ export class NotionApiEvidenceSource implements EvidenceSourceProvider {
     const symbols = content.blocks.filter((block) => block.isHeading).map((block) => block.text);
     const symbolScore = scoreSymbols(symbols, terms);
     const totalScore = score + symbolScore;
+    const focusedScore = focusedTerms.length === 0
+      ? 0
+      : scoreSearchText(text.toLowerCase(), focusedTerms) + scoreSymbols(symbols, focusedTerms);
+
+    if (focusedTerms.length > 0 && focusedScore === 0) {
+      return null;
+    }
 
     if (totalScore === 0) {
       return null;
@@ -558,7 +625,12 @@ export class NotionApiEvidenceSource implements EvidenceSourceProvider {
   }
 }
 
-/** Uses Gemini embeddings to semantically rerank already bounded evidence candidates. */
+/**
+ * Gemini embedding으로 이미 제한된 내부 근거 후보를 의미 유사도 순서로 재정렬합니다.
+ *
+ * @remarks
+ * embedding 호출 실패나 빈 벡터 응답은 검토 흐름을 막지 않고 기존 순서를 그대로 반환합니다.
+ */
 export class GeminiEmbeddingEvidenceReranker implements EvidenceReranker {
   private readonly client: EmbeddingClientLike;
   private readonly maxCandidates: number;
@@ -622,7 +694,13 @@ export class GeminiEmbeddingEvidenceReranker implements EvidenceReranker {
   }
 }
 
-/** Calls only the source providers requested by the route decision. */
+/**
+ * 내부 근거 라우팅 결과가 요청한 출처 제공자만 호출하는 합성 제공자입니다.
+ *
+ * @remarks
+ * 제공자 오류는 전체 검토 흐름을 중단하지 않고 `unavailable` 근거 항목으로 변환합니다. 지식 회로가 켜져 있으면
+ * 수집된 근거를 후처리해 이전 피드백 점수와 충돌 정보를 반영합니다.
+ */
 export class CompositeInternalEvidenceProvider implements InternalEvidenceProvider {
   constructor(
     private readonly providers: EvidenceProviderMap,
@@ -678,6 +756,7 @@ export class CompositeInternalEvidenceProvider implements InternalEvidenceProvid
   }
 }
 
+/** GitHub 기반 backend/flutter 근거 제공자를 환경설정에서 만들 때 사용하는 옵션입니다. */
 export type GitHubEvidenceOptions = {
   enabled?: boolean;
   token?: string | undefined;
@@ -687,6 +766,7 @@ export type GitHubEvidenceOptions = {
   fetchFn?: FetchLike;
 };
 
+/** Notion 기반 정책 근거 제공자를 환경설정에서 만들 때 사용하는 옵션입니다. */
 export type NotionEvidenceOptions = {
   enabled?: boolean;
   token?: string | undefined;
@@ -696,6 +776,12 @@ export type NotionEvidenceOptions = {
   fetchFn?: FetchLike;
 };
 
+/**
+ * 내부 근거 제공자 그래프를 구성하기 위한 최상위 옵션입니다.
+ *
+ * @remarks
+ * GitHub, Notion, embedding 재정렬기, 지식 회로를 독립적으로 켜고 끌 수 있어 테스트와 운영 설정을 같은 생성 함수로 다룹니다.
+ */
 export type InternalEvidenceProviderOptions = {
   github?: GitHubEvidenceOptions;
   notion?: NotionEvidenceOptions;
@@ -709,7 +795,7 @@ export type InternalEvidenceProviderOptions = {
   knowledgeCircuit?: KnowledgeCircuitService | undefined;
 };
 
-/** Creates the full evidence provider graph from environment-style options. */
+/** 환경변수 형태의 옵션에서 전체 내부 근거 제공자 그래프를 생성합니다. */
 export function createInternalEvidenceProvider(options: InternalEvidenceProviderOptions): InternalEvidenceProvider {
   const providers: Partial<Record<InternalEvidenceSourceType, EvidenceSourceProvider[]>> = {};
 
@@ -944,12 +1030,30 @@ function buildExternalEvidenceTerms(
   decision: EvidenceRouteDecision,
   sourceType: InternalEvidenceSourceType,
 ): string[] {
+  const focusedTerms = buildFocusedEvidenceTerms(inquiry, decision);
+
+  if (focusedTerms.length > 0) {
+    return focusedTerms;
+  }
+
   const terms = [
     ...safeSourceTerms(sourceType),
     ...safeRouteTerms(decision.route),
-    ...safeIntentTerms(`${inquiry.type}\n${inquiry.message}\n${decision.reason}\n${decision.needsCheck}`),
   ];
 
+  return uniqueEvidenceTerms(terms);
+}
+
+function buildFocusedEvidenceTerms(
+  inquiry: Inquiry,
+  decision: EvidenceRouteDecision,
+): string[] {
+  return uniqueEvidenceTerms(
+    safeIntentTerms(`${inquiry.type}\n${inquiry.message}\n${decision.reason}\n${decision.needsCheck}`),
+  );
+}
+
+function uniqueEvidenceTerms(terms: string[]): string[] {
   return Array.from(new Set(terms.map((term) => term.toLowerCase()).filter((term) => term.length >= 2)));
 }
 
@@ -968,7 +1072,7 @@ function safeRouteTerms(route: EvidenceRouteDecision['route']): string[] {
     need_backend_evidence: ['server', 'api', 'config'],
     need_flutter_evidence: ['client', 'app', 'screen'],
     need_notion_policy: ['policy', 'guide', 'feature'],
-    need_multi_source_evidence: ['policy', 'session', 'feature'],
+    need_multi_source_evidence: [],
     escalate_manual: ['policy', 'support'],
   };
 
@@ -980,7 +1084,7 @@ function safeIntentTerms(text: string): string[] {
     { pattern: /동시|concurrent|multi|multiple|simultaneous/i, terms: ['concurrent', 'session'] },
     { pattern: /로그인|login|auth|인증/i, terms: ['auth', 'login', 'session', 'token'] },
     { pattern: /계정|account|user/i, terms: ['account', 'user'] },
-    { pattern: /알림|notification|push/i, terms: ['notification', 'push'] },
+    { pattern: /알림|notification|push|fcm|firebase/i, terms: ['notification', 'push'] },
     { pattern: /기록|history|record|log/i, terms: ['record', 'history'] },
     { pattern: /결제|구독|환불|payment|subscription|billing|refund/i, terms: ['payment', 'subscription', 'billing'] },
     { pattern: /삭제|탈퇴|delete|withdrawal|privacy/i, terms: ['delete', 'privacy', 'account'] },
@@ -1284,6 +1388,19 @@ function buildGitHubSearchQuery(repository: GitHubRepository, terms: string[], m
     .join(' ');
 
   return `${queryTerms} repo:${repository.owner}/${repository.repo}`.trim();
+}
+
+function isLowSignalGitHubPath(path: string): boolean {
+  const normalized = path.replace(/\\/g, '/').toLowerCase();
+
+  return normalized === 'agents.md'
+    || normalized === 'claude.md'
+    || normalized === 'tasks/todo.md'
+    || normalized.startsWith('tasks/')
+    || normalized.includes('/tasks/')
+    || normalized.startsWith('.agents/')
+    || normalized.startsWith('.github/')
+    || normalized.startsWith('.omx/');
 }
 
 function parseCsv(value: string | undefined): string[] {
