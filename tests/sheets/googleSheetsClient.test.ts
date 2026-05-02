@@ -384,7 +384,7 @@ describe('GoogleSheetsClient', () => {
     await target.updateManagedFields(2, {
       inquiry_id: 'inq_2',
       status: 'drafting',
-      '완료 여부': 'TRUE',
+      '완료 여부': true,
       error_message: '',
     });
 
@@ -395,7 +395,7 @@ describe('GoogleSheetsClient', () => {
         data: [
           { range: "'설문지 응답 시트1'!Q2", values: [['inq_2']] },
           { range: "'설문지 응답 시트1'!P2", values: [['drafting']] },
-          { range: "'설문지 응답 시트1'!O2", values: [['TRUE']] },
+          { range: "'설문지 응답 시트1'!O2", values: [[true]] },
           { range: "'설문지 응답 시트1'!R2", values: [['']] },
         ],
         valueInputOption: 'RAW',
