@@ -12,6 +12,12 @@ import type {
   RetrievalFeedbackInput,
 } from '../domain/knowledgeCircuit.js';
 
+/**
+ * 지식 회로 메타데이터를 저장하고 조회하는 저장소 포트입니다.
+ *
+ * @remarks
+ * 구현체는 원문 근거 본문을 저장하지 않고, 노드/간선 메타데이터와 Discord 검토 피드백만 저장해야 합니다.
+ */
 export interface KnowledgeCircuitStore {
   upsertNode(input: KnowledgeNodeInput): Promise<KnowledgeNode>;
   findNodeBySource(sourceType: string, sourceRef: string): Promise<KnowledgeNode | null>;
@@ -30,6 +36,12 @@ type NodeRecord = Omit<KnowledgeNode, 'topics' | 'symbols'> & {
 
 type EdgeRecord = KnowledgeEdge;
 
+/**
+ * 테스트와 비영속 실행에 사용하는 메모리 기반 지식 회로 저장소입니다.
+ *
+ * @remarks
+ * 프로세스가 종료되면 모든 노드, 간선, 피드백이 사라지므로 운영의 장기 피드백 학습에는 SQLite 저장소를 사용합니다.
+ */
 export class InMemoryKnowledgeCircuitStore implements KnowledgeCircuitStore {
   private readonly nodes = new Map<string, KnowledgeNode>();
   private readonly sourceIndex = new Map<string, string>();
@@ -129,6 +141,13 @@ type DatabaseSyncLike = {
   close(): void;
 };
 
+/**
+ * `node:sqlite`를 사용하는 영속 지식 회로 저장소입니다.
+ *
+ * @remarks
+ * 저장소 디렉터리가 없으면 생성하고, 시작 시 필요한 스키마와 인덱스를 초기화합니다. Node 22의 `node:sqlite`는
+ * 실험 기능 경고를 낼 수 있지만 저장소 동작 자체는 동기 API를 감싼 Promise 포트로 노출합니다.
+ */
 export class SqliteKnowledgeCircuitStore implements KnowledgeCircuitStore {
   private readonly db: DatabaseSyncLike;
 
@@ -349,10 +368,23 @@ export class SqliteKnowledgeCircuitStore implements KnowledgeCircuitStore {
   }
 }
 
+/**
+ * 같은 입력값에 대해 항상 같은 짧은 식별자를 생성합니다.
+ *
+ * @param prefix - id 종류를 구분하는 접두사
+ * @param value - hash 대상이 되는 안정적인 원문 값
+ * @returns `{prefix}_{sha256 앞 32자리}` 형태의 식별자
+ */
 export function stableId(prefix: string, value: string): string {
   return `${prefix}_${createHash('sha256').update(value).digest('hex').slice(0, 32)}`;
 }
 
+/**
+ * 출처 내용 변경 여부를 비교하기 위한 SHA-256 해시를 생성합니다.
+ *
+ * @param value - 해시 대상 문자열
+ * @returns 전체 SHA-256 16진수 digest
+ */
 export function contentHash(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }

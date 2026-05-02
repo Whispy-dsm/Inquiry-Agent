@@ -22,7 +22,7 @@ type LoggerLike = {
   error(payload: unknown, message?: string): void;
 };
 
-/** Discord interaction 중 worker가 분기 처리에 사용하는 최소 형태입니다. */
+/** Discord interaction 중 워커가 분기 처리에 사용하는 최소 형태입니다. */
 type InteractionLike = {
   isButton(): boolean;
   isModalSubmit(): boolean;
@@ -34,7 +34,7 @@ type RepliableInteraction = {
   reply(payload: { content: string; ephemeral: boolean }): Promise<void>;
 };
 
-/** 테스트 가능한 worker app을 만들기 위한 의존성 묶음입니다. */
+/** 테스트 가능한 워커 앱을 만들기 위한 의존성 묶음입니다. */
 type WorkerAppDeps = {
   bot: { start(): Promise<void>; client: { on(event: string, listener: (interaction: InteractionLike) => Promise<void>): unknown } };
   workflow: { pollOnce(): Promise<void> };
@@ -72,10 +72,10 @@ type InternalEvidenceEnv = Pick<
 >;
 
 /**
- * worker를 시작하고 최초 polling 및 주기 polling을 등록하는 작은 app 객체를 만듭니다.
+ * 워커를 시작하고 최초 polling 및 주기 polling을 등록하는 작은 앱 객체를 만듭니다.
  *
- * @param deps - 테스트 가능한 worker 의존성 묶음
- * @returns 시작 가능한 worker app
+ * @param deps - 테스트 가능한 워커 의존성 묶음
+ * @returns 시작 가능한 워커 앱
  */
 export function createWorkerApp(deps: WorkerAppDeps) {
   const setIntervalFn = deps.setIntervalFn ?? setInterval;
@@ -101,10 +101,10 @@ export function createWorkerApp(deps: WorkerAppDeps) {
 }
 
 /**
- * 환경변수 설정에 따라 내부 근거 provider를 만들거나 비활성 상태를 유지합니다.
+ * 환경변수 설정에 따라 내부 근거 제공자를 만들거나 비활성 상태를 유지합니다.
  *
  * @remarks
- * 기본값은 비활성입니다. 켜진 경우에도 개별 경로가 없으면 provider가 unavailable 근거로 fail-closed합니다.
+ * 기본값은 비활성입니다. 켜진 경우에도 개별 경로가 없으면 제공자가 `unavailable` 근거로 안전하게 실패합니다.
  */
 export function createInternalEvidenceProviderFromEnv(
   env: InternalEvidenceEnv,
@@ -172,7 +172,7 @@ async function replyEphemeral(
 }
 
 /**
- * 실제 환경변수와 외부 API client를 조립해 inquiry worker를 시작합니다.
+ * 실제 환경변수와 외부 API 클라이언트를 조립해 문의 처리 워커를 시작합니다.
  *
  * @param envInput - 기본값은 `process.env`; 테스트에서는 명시 값을 주입합니다.
  */

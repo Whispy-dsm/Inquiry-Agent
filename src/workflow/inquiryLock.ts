@@ -3,7 +3,7 @@ export type LockResult =
   | { acquired: true; holder: string }
   | { acquired: false; holder: string };
 
-/** 단일 worker 프로세스 안에서 Discord 중복 클릭에 의한 중복 발송을 막는 메모리 lock입니다. */
+/** 단일 워커 프로세스 안에서 Discord 중복 클릭에 의한 중복 발송을 막는 메모리 lock입니다. */
 export class InquiryLock {
   private readonly holders = new Map<string, string>();
 

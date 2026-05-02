@@ -31,7 +31,7 @@ export type EvidenceConfidence = 'low' | 'medium' | 'high';
 /** 내부 근거 검색에서 개별 출처가 어떤 상태로 반환되었는지 나타냅니다. */
 export type EvidenceItemStatus = 'found' | 'empty' | 'unavailable';
 
-/** Evidence retrieval strategies that contributed to an item. */
+/** 근거 항목을 찾거나 재정렬하는 데 기여한 검색/분석 전략입니다. */
 export type EvidenceRetrievalSignal = 'keyword' | 'ast' | 'symbol' | 'embedding' | 'external' | 'circuit';
 
 /** AI가 내부 근거를 찾아야 하는지 판단한 결과입니다. */
@@ -64,19 +64,19 @@ export interface EvidenceItem {
   snippet: string;
   /** 근거 검색 성공, 빈 결과, 접근 불가 상태입니다. */
   status: EvidenceItemStatus;
-  /** Search strategies that found or reranked this evidence item. */
+  /** 이 근거 항목을 찾거나 재정렬하는 데 사용된 검색/분석 전략입니다. */
   retrievalSignals?: EvidenceRetrievalSignal[];
-  /** Local or remote relevance score before optional semantic rerank. */
+  /** 선택적 의미 재정렬을 적용하기 전 로컬 또는 원격 검색 관련도 점수입니다. */
   score?: number;
-  /** Optional cosine similarity from embedding rerank. */
+  /** embedding 재정렬에서 계산된 cosine similarity 점수입니다. */
   semanticScore?: number;
-  /** Optional score added by the persistent knowledge circuit metadata layer. */
+  /** 영속 지식 회로 메타데이터 계층이 더한 피드백 기반 점수입니다. */
   circuitScore?: number;
-  /** Optional stable metadata node id used by the knowledge circuit. */
+  /** 지식 회로에서 근거 메타데이터를 추적할 때 사용하는 안정적인 노드 id입니다. */
   circuitNodeId?: string;
-  /** Optional source content hash used to ignore stale circuit feedback after a source changes. */
+  /** 출처 내용이 바뀐 뒤 오래된 지식 회로 피드백을 무시하기 위한 content hash입니다. */
   circuitContentHash?: string;
-  /** Optional conflicts derived from persistent knowledge graph edges. */
+  /** 영속 지식 그래프 edge에서 파생된 근거 충돌 또는 주의점입니다. */
   circuitConflicts?: string[];
 }
 

@@ -4,6 +4,12 @@ import type { Inquiry } from '../domain/inquiry.js';
 import type { KnowledgeCircuitFeedbackRef, KnowledgeEdge } from '../domain/knowledgeCircuit.js';
 import { contentHash, type KnowledgeCircuitStore } from './knowledgeCircuitStore.js';
 
+/**
+ * 지식 회로가 한 번에 후처리할 근거 수와 관계 탐색 깊이를 제한하는 옵션입니다.
+ *
+ * @remarks
+ * 값이 커질수록 저장소 조회량이 늘어나므로 Discord 검토 메시지 생성 경로에서는 작은 기본값을 유지합니다.
+ */
 export type KnowledgeCircuitOptions = {
   maxNodes?: number;
   maxHops?: number;
@@ -17,6 +23,12 @@ type CircuitEvidence = {
   conflicts: string[];
 };
 
+/**
+ * 내부 근거 metadata와 Discord 피드백을 이용해 근거 순서와 충돌 정보를 보강합니다.
+ *
+ * @remarks
+ * 원문 근거 본문을 저장하지 않고 안정적인 출처 참조와 content hash만 지식 회로 저장소에 남깁니다.
+ */
 export class KnowledgeCircuitService {
   private readonly maxNodes: number;
   private readonly maxHops: number;
@@ -29,6 +41,12 @@ export class KnowledgeCircuitService {
     this.maxHops = options.maxHops ?? 1;
   }
 
+  /**
+   * 수집된 내부 근거를 지식 회로 metadata로 보강하고 점수 순서로 정렬합니다.
+   *
+   * @remarks
+   * `found` 근거만 저장소 예산을 사용하며, `empty`와 `unavailable` 근거는 원래 항목을 유지합니다.
+   */
   async processEvidence(
     inquiry: Inquiry,
     decision: EvidenceRouteDecision,
@@ -55,6 +73,12 @@ export class KnowledgeCircuitService {
       .sort(compareEvidence);
   }
 
+  /**
+   * 단일 근거 항목에 대한 검토 결과를 지식 회로 피드백으로 저장합니다.
+   *
+   * @remarks
+   * 현재 저장소에 같은 출처 노드가 있을 때만 내용 해시를 함께 저장해 낡은 피드백을 나중에 걸러냅니다.
+   */
   async recordFeedback(args: {
     evidence: EvidenceItem;
     inquiry: Inquiry;
@@ -72,6 +96,12 @@ export class KnowledgeCircuitService {
     });
   }
 
+  /**
+   * Sheet에 저장된 근거 참조 목록을 이용해 Discord 처리 결과를 지식 회로 피드백으로 기록합니다.
+   *
+   * @remarks
+   * 노드 id 또는 내용 해시가 현재 저장소 값과 다르면 출처가 바뀐 것으로 보고 피드백을 무시합니다.
+   */
   async recordFeedbackForRefs(args: {
     refs: readonly KnowledgeCircuitFeedbackRef[];
     inquiryId: string;
@@ -163,6 +193,12 @@ export class KnowledgeCircuitService {
   }
 }
 
+/**
+ * 문의 유형과 본문을 개인정보가 직접 드러나지 않는 안정적인 hash로 변환합니다.
+ *
+ * @param inquiry - 피드백과 연결할 문의
+ * @returns 문의 유형과 정규화된 본문으로 만든 SHA-256 hash
+ */
 export function hashInquiry(inquiry: Inquiry): string {
   return createHash('sha256')
     .update(`${inquiry.type}\n${inquiry.message.trim().toLowerCase()}`)

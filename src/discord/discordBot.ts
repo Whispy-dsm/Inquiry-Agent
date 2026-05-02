@@ -7,7 +7,7 @@ type DiscordReviewChannelLike = {
   send(payload: ReturnType<typeof renderInquiryMessage>): Promise<{ id: string }>;
 };
 
-/** Minimal discord.js client surface used by the review bot. */
+/** 검토 봇이 사용하는 discord.js 클라이언트 기능만 좁혀 둔 테스트용 포트입니다. */
 type DiscordClientLike = {
   login(token: string): Promise<unknown>;
   on?(event: string, listener: (...args: unknown[]) => unknown): unknown;
@@ -16,7 +16,12 @@ type DiscordClientLike = {
   };
 };
 
-/** Posts AI draft review cards to the configured Discord review channel. */
+/**
+ * AI 초안 검토 카드를 설정된 Discord 검토 채널에 게시합니다.
+ *
+ * @remarks
+ * 채널 조회 결과를 캐시하고, 선택적으로 전송 간격을 둬 Discord 호출 제한에 부딪힐 가능성을 줄입니다.
+ */
 export class DiscordReviewBot {
   readonly client: DiscordClientLike;
   private reviewChannelPromise: Promise<DiscordReviewChannelLike> | null = null;
@@ -35,12 +40,18 @@ export class DiscordReviewBot {
       }) as unknown as DiscordClientLike);
   }
 
-  /** Starts the Discord gateway session with the bot token. */
+  /** 설정된 봇 토큰으로 Discord 게이트웨이 세션을 시작합니다. */
   async start(): Promise<void> {
     await this.client.login(this.token);
   }
 
-  /** Posts a review card and returns the Discord message location. */
+  /**
+   * 문의와 AI 초안을 검토 카드로 게시하고 Discord 메시지 위치를 반환합니다.
+   *
+   * @remarks
+   * 같은 워커에서 여러 검토 카드가 동시에 생성되어도 `reviewPostIntervalMs` 간격을 지키도록
+   * 내부 큐를 통해 순차 전송합니다.
+   */
   async postReview(
     inquiry: Inquiry,
     draft: InquiryDraft,

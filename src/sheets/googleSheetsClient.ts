@@ -210,10 +210,10 @@ export class GoogleSheetsClient {
   }
 
   /**
-   * Google Form 기본 컬럼 뒤에 worker 관리 컬럼이 없으면 한 번에 추가합니다.
+   * Google Form 기본 컬럼 뒤에 워커 관리 컬럼이 없으면 한 번에 추가합니다.
    *
    * @remarks
-   * 첫 실행 때 사람이 Sheet header를 직접 만들지 않아도 worker 상태 저장 필드를 사용할 수 있게 합니다.
+   * 첫 실행 때 사람이 Sheet header를 직접 만들지 않아도 워커 상태 저장 필드를 사용할 수 있게 합니다.
    */
   async ensureManagedColumns(): Promise<void> {
     const headers = await this.readHeaders();
@@ -246,7 +246,7 @@ export class GoogleSheetsClient {
    * Discord action의 inquiry id로 발송에 필요한 review metadata를 다시 조회합니다.
    *
    * @param inquiryId - Discord button/modal custom id에 포함된 문의 id
-   * @returns 발송에 필요한 Sheet row metadata. 찾지 못하면 `null`
+   * @returns 발송에 필요한 Sheet row 메타데이터. 찾지 못하면 `null`
    */
   async findInquiryReview(inquiryId: string): Promise<{
     rowNumber: number;
