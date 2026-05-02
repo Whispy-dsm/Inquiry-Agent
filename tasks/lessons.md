@@ -83,3 +83,17 @@
 - Rule: Keep runtime fixes, tests, and docs in separate commits when the user asks for granular PR history.
 - Correction: The user later changed the scope and explicitly asked to include #9 in the #10 PR after it had been removed.
 - Rule: Treat the user's latest scope update as authoritative; if a previously excluded branch must be included, re-apply it deliberately and then re-check cross-scope config defaults for consistency.
+
+## Preserve Google Sheets cell value types
+
+- Correction: The user reported that writing string `TRUE` into the Google Form completion checkbox caused a live Sheets error.
+- Rule: When writing to checkbox/form-controlled Google Sheets columns, use boolean values (`true`/`false`) instead of string lookalikes such as `'TRUE'`.
+- Rule: Keep Sheets adapter value types broad enough for actual cell values (`string | boolean`) while preserving string writes for ordinary managed text columns.
+- Correction: The user clarified that rejecting an inquiry is also a completed handling outcome.
+- Rule: Mark the Google Form completion checkbox for every terminal human handling outcome, including approved, edited-sent, and rejected.
+
+## Write Korean, type-specific commits
+
+- Correction: The user clarified that test-only changes should use the `test` commit type and commit messages should be written in Korean.
+- Rule: In this repository, split test-only diffs into `test ( #issue ) : ...` commits when the user asks for detailed commit separation.
+- Rule: Write commit subjects and bodies in Korean unless the user requests another language; keep required trailer keys in the Lore format.

@@ -946,3 +946,55 @@ Related issue: #13
 - Simplifications made: changed only the deploy invocation to wait for the Swarm update instead of adding another polling path.
 - Verification: `git diff --check` passed with CRLF warnings only; the next `main` push will exercise the workflow deploy path.
 - Remaining risks: final proof requires checking the next GitHub Actions deploy log and server `docker ps -a` output after this commit is pushed.
+
+## Whispy Inquiry JSON Parsing Fallback
+
+### Plan
+
+- [x] Confirm where `AI draft parsing failed` and route JSON parse failures originate.
+- [x] Add regression coverage that Gemini route and draft calls request structured JSON output.
+- [x] Harden the Gemini call config without changing the safe manual-escalation fallback behavior.
+- [x] Run focused tests, full tests, typecheck, build, lint attempt, and diff hygiene.
+
+### Review
+
+- Changed files: `src/ai/geminiDraftGenerator.ts`, `src/ai/internalEvidence.ts`, `tests/ai/geminiDraftRuntime.test.ts`, `tasks/todo.md`.
+- Root cause: the route and draft Gemini calls relied only on prompt text for JSON formatting, so a normal free-form model response could trigger both parser fallbacks and produce the generic manual-review card.
+- Simplifications made: kept the existing safe fallback path and added Gemini JSON MIME/schema config to the two model calls instead of adding a new parser dependency.
+- Stabilization made: replaced the TypeScript compiler dynamic-import timeout in GitHub AST evidence extraction with a direct runtime import, removing the full-suite `ast`/`symbol` flake exposed during verification.
+- Verification: focused Gemini/internal-evidence tests, full `npm run test` (18 files / 103 tests), `npm run typecheck`, `npm run build`, and `git diff --check` passed.
+- Remaining risks: `npm run lint` is still blocked by the repository's existing missing ESLint v9 `eslint.config.*` file; live confirmation requires redeploying the patched worker and submitting a new inquiry.
+
+## Completion Checkbox Boolean Write
+
+### Plan
+
+- [x] Confirm approval/edit completion writes use a string `TRUE`.
+- [x] Update regression expectations so the form completion checkbox is written as boolean `true`.
+- [x] Allow Sheets managed updates to carry boolean cell values without changing text-field behavior.
+- [x] Run focused tests, full tests, typecheck, build, lint attempt, and diff hygiene.
+
+### Review
+
+- Changed files: `src/discord/interactionHandlers.ts`, `src/sheets/googleSheetsClient.ts`, `src/sheets/sheetColumns.ts`, `tests/discord/interactionHandlers.test.ts`, `tests/sheets/googleSheetsClient.test.ts`, `tasks/lessons.md`, `tasks/todo.md`.
+- Root cause: approve and edited-send completion wrote the Google Form checkbox column as the string `'TRUE'`, which can conflict with checkbox validation. The Sheets adapter also only modeled managed cell values as strings.
+- Simplifications made: widened Sheets write values to `string | boolean` and changed only the completion checkbox write to boolean `true`; all text managed fields remain unchanged.
+- Follow-up note: reject handling was aligned below so rejected inquiries also mark the Google Form completion checkbox.
+- Verification: focused Discord/Sheets tests, full `npm run test` (18 files / 103 tests), `npm run typecheck`, `npm run build`, and `git diff --check` passed.
+- Remaining risks: `npm run lint` is still blocked by the repository's existing missing ESLint v9 `eslint.config.*` file; deployed workers need rebuild/restart before live Sheets writes change from string `'TRUE'` to boolean `true`.
+
+## Reject Marks Completion Checkbox
+
+### Plan
+
+- [x] Treat reject as a completed handling outcome for the Google Form completion checkbox.
+- [x] Update reject regression coverage to expect boolean `true`.
+- [x] Verify Discord handler tests, full tests, typecheck, build, lint attempt, and diff hygiene.
+
+### Review
+
+- Changed files: `src/discord/interactionHandlers.ts`, `tests/discord/interactionHandlers.test.ts`, `tasks/lessons.md`, `tasks/todo.md`.
+- Root cause: the earlier interpretation treated `rejected` as terminal for worker retry purposes but did not mirror that terminal state into the Google Form completion checkbox.
+- Simplifications made: added boolean `true` to the existing reject Sheet update instead of introducing a separate completion update call.
+- Verification: `npm run test -- tests/discord/interactionHandlers.test.ts`, full `npm run test` (18 files / 103 tests), `npm run typecheck`, `npm run build`, and `git diff --check` passed.
+- Remaining risks: `npm run lint` is still blocked by the repository's existing missing ESLint v9 `eslint.config.*` file; live behavior changes after the worker is rebuilt and restarted.
