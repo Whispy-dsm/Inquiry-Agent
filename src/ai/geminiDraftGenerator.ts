@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, Type } from '@google/genai';
 import { z } from 'zod';
 import type {
   EvidenceConfidence,
@@ -44,6 +44,9 @@ type GeminiLike = {
       contents: string;
       config: {
         systemInstruction: string;
+        temperature?: number;
+        responseMimeType?: string;
+        responseSchema?: unknown;
       };
     }): Promise<{
       text?: string;
@@ -55,6 +58,82 @@ type GeminiDraftGeneratorOptions = {
   /** 켜져 있으면 초안 생성 전에 내부 근거 라우팅과 근거 수집을 수행합니다. */
   internalEvidenceProvider?: InternalEvidenceProvider;
 };
+
+const draftResponseSchema = {
+  type: Type.OBJECT,
+  required: ['summary', 'subject', 'body', 'missingInformation'],
+  propertyOrdering: ['summary', 'subject', 'body', 'missingInformation'],
+  properties: {
+    summary: {
+      type: Type.STRING,
+      description: 'Short reviewer-facing summary of the customer inquiry.',
+    },
+    subject: {
+      type: Type.STRING,
+      description: 'Customer-facing email subject.',
+    },
+    body: {
+      type: Type.STRING,
+      description: 'Customer-facing Korean email body.',
+    },
+    missingInformation: {
+      type: Type.ARRAY,
+      description: 'Facts a human reviewer must confirm before sending.',
+      items: {
+        type: Type.STRING,
+      },
+    },
+  },
+} as const;
+
+const evidenceRouteResponseSchema = {
+  type: Type.OBJECT,
+  required: ['route', 'reason', 'requestedSources', 'confidence', 'needsCheck', 'conflicts'],
+  propertyOrdering: ['route', 'reason', 'requestedSources', 'confidence', 'needsCheck', 'conflicts'],
+  properties: {
+    route: {
+      type: Type.STRING,
+      format: 'enum',
+      enum: [
+        'answer_from_rag',
+        'need_backend_evidence',
+        'need_flutter_evidence',
+        'need_notion_policy',
+        'need_multi_source_evidence',
+        'escalate_manual',
+      ],
+    },
+    reason: {
+      type: Type.STRING,
+      description: 'Reason the route was selected.',
+    },
+    requestedSources: {
+      type: Type.ARRAY,
+      description: 'Evidence sources requested for this route.',
+      items: {
+        type: Type.STRING,
+        format: 'enum',
+        enum: ['rag', 'backend', 'flutter', 'notion'],
+      },
+    },
+    confidence: {
+      type: Type.STRING,
+      format: 'enum',
+      enum: ['low', 'medium', 'high'],
+    },
+    needsCheck: {
+      type: Type.STRING,
+      description: 'What a human reviewer must verify.',
+    },
+    conflicts: {
+      type: Type.ARRAY,
+      description: 'Detected conflicts or ambiguity signals.',
+      items: {
+        type: Type.STRING,
+      },
+    },
+  },
+} as const;
 
 /**
  * Gemini 모델과 context provider를 사용해 문의 답변 초안을 생성합니다.
@@ -91,6 +170,9 @@ export class GeminiDraftGenerator {
       contents: buildDraftPrompt(inquiry, context, evidenceReview),
       config: {
         systemInstruction: draftSystemPrompt,
+        responseMimeType: 'application/json',
+        responseSchema: draftResponseSchema,
+        temperature: 0,
       },
     });
 
@@ -119,6 +201,9 @@ export class GeminiDraftGenerator {
         contents: buildEvidenceRoutePrompt(inquiry, context),
         config: {
           systemInstruction: internalEvidenceRouterSystemPrompt,
+          responseMimeType: 'application/json',
+          responseSchema: evidenceRouteResponseSchema,
+          temperature: 0,
         },
       });
       decision = parseEvidenceRouteDecision(routeResponse.text ?? '');
