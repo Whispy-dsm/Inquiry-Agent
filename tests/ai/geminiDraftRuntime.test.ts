@@ -142,6 +142,81 @@ describe('GeminiDraftGenerator', () => {
     );
   });
 
+  it('should request structured JSON for route and draft model calls', async () => {
+    // Arrange
+    const contextProvider = {
+      findRelevantContext: vi.fn().mockResolvedValue([]),
+    };
+    const internalEvidenceProvider = {
+      findEvidence: vi.fn().mockResolvedValue([]),
+    };
+    const fakeClient = {
+      models: {
+        generateContent: vi.fn()
+          .mockResolvedValueOnce({
+            text: JSON.stringify({
+              route: 'need_flutter_evidence',
+              reason: 'Client behavior needs review.',
+              requestedSources: ['flutter'],
+              confidence: 'medium',
+              needsCheck: 'Check the app behavior before replying.',
+              conflicts: [],
+            }),
+          })
+          .mockResolvedValueOnce({
+            text: JSON.stringify({
+              summary: 'App issue',
+              subject: 'We will check your inquiry',
+              body: 'A reviewer should confirm the app behavior.',
+              missingInformation: [],
+            }),
+          }),
+      },
+    };
+    const target = new GeminiDraftGenerator(
+      'gemini-key',
+      'gemini-2.5-flash-lite',
+      contextProvider as never,
+      fakeClient as never,
+      { internalEvidenceProvider: internalEvidenceProvider as never },
+    );
+
+    // Act
+    await target.generateDraft(baseInquiry);
+
+    // Assert
+    const routeConfig = fakeClient.models.generateContent.mock.calls[0]?.[0].config;
+    const draftConfig = fakeClient.models.generateContent.mock.calls[1]?.[0].config;
+    expect(routeConfig).toEqual(expect.objectContaining({
+      responseMimeType: 'application/json',
+      responseSchema: expect.objectContaining({
+        type: 'OBJECT',
+        required: ['route', 'reason', 'requestedSources', 'confidence', 'needsCheck', 'conflicts'],
+        properties: expect.objectContaining({
+          route: expect.objectContaining({
+            type: 'STRING',
+            format: 'enum',
+            enum: expect.arrayContaining(['answer_from_rag', 'escalate_manual']),
+          }),
+          requestedSources: expect.objectContaining({
+            type: 'ARRAY',
+          }),
+        }),
+      }),
+    }));
+    expect(draftConfig).toEqual(expect.objectContaining({
+      responseMimeType: 'application/json',
+      responseSchema: expect.objectContaining({
+        type: 'OBJECT',
+        required: ['summary', 'subject', 'body', 'missingInformation'],
+        properties: expect.objectContaining({
+          summary: expect.objectContaining({ type: 'STRING' }),
+          missingInformation: expect.objectContaining({ type: 'ARRAY' }),
+        }),
+      }),
+    }));
+  });
+
   it('should not call evidence providers when the route escalates manually', async () => {
     // Arrange
     const contextProvider = {
