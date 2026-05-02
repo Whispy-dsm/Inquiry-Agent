@@ -2,7 +2,13 @@ import { google, type sheets_v4 } from 'googleapis';
 import type { OAuth2Client } from 'google-auth-library';
 import type { Inquiry } from '../domain/inquiry.js';
 import type { KnowledgeCircuitFeedbackRef } from '../domain/knowledgeCircuit.js';
-import { buildManagedColumnUpdates, getReplyEmail, isCompletionChecked, mapRowToInquiry } from './sheetColumns.js';
+import {
+  buildManagedColumnUpdates,
+  getReplyEmail,
+  isCompletionChecked,
+  mapRowToInquiry,
+  type SheetCellValue,
+} from './sheetColumns.js';
 import { normalizeSheetName, quoteSheetName, sheetNamesMatch } from './sheetName.js';
 
 /** Google Sheet에 worker가 직접 관리하는 출력 컬럼 목록입니다. */
@@ -83,7 +89,7 @@ type SheetsLike = {
       batchUpdate(args: {
         spreadsheetId: string;
         requestBody: {
-          data: Array<{ range: string; values: string[][] }>;
+          data: Array<{ range: string; values: SheetCellValue[][] }>;
           valueInputOption: string;
         };
       }): Promise<unknown>;
@@ -179,7 +185,7 @@ export class GoogleSheetsClient {
    */
   async updateManagedFields(
     rowNumber: number,
-    values: Record<string, string>,
+    values: Record<string, SheetCellValue>,
   ): Promise<void> {
     const headers = await this.readHeaders();
     const updates = buildManagedColumnUpdates(headers, values);

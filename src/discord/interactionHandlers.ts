@@ -114,6 +114,7 @@ export async function handleReviewButton(
     if (action === 'reject') {
       await deps.sheets.updateManagedFields(review.rowNumber, {
         status: 'rejected',
+        '완료 여부': true,
         handled_by: holder,
         handled_at: new Date().toISOString(),
       });
@@ -160,7 +161,7 @@ export async function handleReviewButton(
       try {
         await deps.sheets.updateManagedFields(review.rowNumber, {
           status: 'sent',
-          '완료 여부': 'TRUE',
+          '완료 여부': true,
           final_subject: review.draftSubject,
           final_body: review.draftBody,
           gmail_message_id: sent.messageId,
@@ -285,7 +286,7 @@ export async function handleEditSubmitSend(
     try {
       await deps.sheets.updateManagedFields(review.rowNumber, {
         status: 'sent',
-        '완료 여부': 'TRUE',
+        '완료 여부': true,
         final_subject: edit.subject,
         final_body: edit.body,
         gmail_message_id: sent.messageId,

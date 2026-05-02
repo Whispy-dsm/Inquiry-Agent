@@ -1,5 +1,7 @@
 import type { Inquiry, InquiryStatus, InquiryType } from '../domain/inquiry.js';
 
+export type SheetCellValue = string | boolean;
+
 const timestampHeaders = ['타임스탬프', 'Timestamp'] as const;
 const typeHeaders = ['문의 유형을 선택해 주세요', '문의 유형'] as const;
 const replyEmailHeaders = ['답변 받으실 이메일 주소를 입력해주세요.', 'Email Address'] as const;
@@ -106,8 +108,8 @@ export function mapRowToInquiry(headers: string[], row: string[], rowNumber: num
 /** Sheet에 존재하는 managed column만 골라 A1 업데이트에 필요한 column index/value 목록을 만듭니다. */
 export function buildManagedColumnUpdates(
   headers: string[],
-  values: Record<string, string>,
-): Array<{ columnIndex: number; value: string }> {
+  values: Record<string, SheetCellValue>,
+): Array<{ columnIndex: number; value: SheetCellValue }> {
   return Object.entries(values).flatMap(([key, value]) => {
     const columnIndex = headers.indexOf(key);
 
