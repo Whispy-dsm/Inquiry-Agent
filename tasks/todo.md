@@ -998,3 +998,74 @@ Related issue: #13
 - Simplifications made: added boolean `true` to the existing reject Sheet update instead of introducing a separate completion update call.
 - Verification: `npm run test -- tests/discord/interactionHandlers.test.ts`, full `npm run test` (18 files / 103 tests), `npm run typecheck`, `npm run build`, and `git diff --check` passed.
 - Remaining risks: `npm run lint` is still blocked by the repository's existing missing ESLint v9 `eslint.config.*` file; live behavior changes after the worker is rebuilt and restarted.
+
+## Notification Evidence Retrieval Precision
+
+### Plan
+
+- [x] Reproduce the notification inquiry evidence issue with focused tests.
+- [x] Prevent multi-source routing from injecting broad generic search terms that match unrelated Notion/product docs.
+- [x] Require intent-specific matches for found GitHub/Notion evidence when an intent such as notification is detected.
+- [x] Exclude low-signal operational task files from GitHub code evidence results.
+- [x] Run focused internal-evidence tests, full tests, typecheck, build, lint attempt, and diff hygiene.
+
+### Review
+
+- Changed files: `src/ai/internalEvidence.ts`, `tests/ai/internalEvidence.test.ts`, `tasks/lessons.md`, `tasks/todo.md`.
+- Root cause: multi-source evidence search put broad fallback terms such as `policy` / `feature` ahead of intent terms, and GitHub search results could promote operational task documents as implementation evidence.
+- Simplifications made: reused the existing safe intent-term path for external queries and provider-side filtering instead of adding a new retrieval subsystem.
+- Verification:
+  - `npm run test -- tests/ai/internalEvidence.test.ts` -> 1 file / 20 tests passed.
+  - `npm run test` -> 18 files / 106 tests passed.
+  - `npm run typecheck` -> passed.
+  - `npm run build` -> passed.
+  - `git diff --check` -> passed with CRLF warnings only.
+  - `npm run lint` -> blocked by existing missing ESLint v9 `eslint.config.*`.
+- Remaining risks: live confirmation still requires redeploying the worker and submitting a new notification inquiry.
+
+## Discord Evidence Review Toggle
+
+### Plan
+
+- [x] Render internal evidence review collapsed by default with a compact summary.
+- [x] Add a Discord button to expand/collapse the internal evidence review without locking or handling the inquiry.
+- [x] Keep approve/edit/reject buttons working while the evidence review is toggled.
+- [x] Add focused Discord render and interaction tests.
+- [x] Run focused tests, full tests, typecheck, build, lint attempt, and diff hygiene.
+
+### Review
+
+- Changed files: `src/discord/renderInquiryMessage.ts`, `src/discord/interactionHandlers.ts`, `tests/discord/renderInquiryMessage.test.ts`, `tests/discord/interactionHandlers.test.ts`, `tasks/todo.md`.
+- Root cause: internal evidence details were appended directly to the main Discord review message, so multi-source evidence made the card too long for fast review.
+- Simplifications made: kept the existing Discord message flow and added a secondary expand/collapse button instead of introducing a separate evidence thread or storage schema.
+- Verification:
+  - `npm run test -- tests/discord/renderInquiryMessage.test.ts tests/discord/interactionHandlers.test.ts` -> 2 files / 14 tests passed.
+  - `npm run test` -> 18 files / 108 tests passed.
+  - `npm run typecheck` -> passed.
+  - `npm run build` -> passed.
+  - `git diff --check` -> passed with CRLF warnings only.
+  - `npm run lint` -> blocked by existing missing ESLint v9 `eslint.config.*`.
+- Remaining risks: expand/collapse uses the worker process memory seeded when the review message is created, so evidence toggle state will not survive a worker restart for an already-posted message.
+
+## Korean TSDoc Audit
+
+### Plan
+
+- [x] Search production TypeScript TSDoc for English or unclear maintainer-facing descriptions.
+- [x] Rewrite public API TSDoc in Korean with behavior, boundary, and failure-mode context where useful.
+- [x] Avoid documenting TypeScript types redundantly.
+- [x] Run focused typecheck and diff hygiene after documentation edits.
+
+### Review
+
+- Changed files: `src/ai/internalEvidence.ts`, `src/ai/knowledgeCircuit.ts`, `src/ai/knowledgeCircuitStore.ts`, `src/discord/discordBot.ts`, `src/domain/evidence.ts`, `src/domain/knowledgeCircuit.ts`, `src/index.ts`, `src/sheets/googleSheetsClient.ts`, `src/sheets/sheetName.ts`, `src/worker.ts`, `src/workflow/inquiryLock.ts`, `tasks/todo.md`.
+- Root cause: 일부 공개 API TSDoc이 영어 설명이거나, 워커/지식 회로/근거 provider의 캐시와 실패 경계를 다른 유지보수자가 바로 이해하기에는 설명이 부족했습니다.
+- Simplifications made: 런타임 동작은 건드리지 않고 공개 API TSDoc만 한국어로 정리했습니다.
+- Verification:
+  - production TSDoc 영어 잔여 후보 검색 -> 의미 있는 잔여 영어 문장 없음.
+  - `npm run test` -> 18 files / 108 tests passed.
+  - `npm run typecheck` -> passed.
+  - `npm run build` -> passed.
+  - `git diff --check` -> passed with CRLF warnings only.
+  - `npm run lint` -> blocked by existing missing ESLint v9 `eslint.config.*`.
+- Remaining risks: `Google`, `Discord`, `Gemini`, `embedding`, `hash` 같은 고유명사/기술 용어는 한국어 문장 안에 그대로 남겨 두었습니다.

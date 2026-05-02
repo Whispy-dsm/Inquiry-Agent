@@ -4,6 +4,8 @@
 
 - Correction: The user pointed out that code comments should follow TSDoc conventions rather than generic inline comments.
 - Rule: For TypeScript, document exported classes, interfaces, functions, and constants with `/** ... */` TSDoc.
+- Correction: 사용자는 TSDoc이 한국어로 작성되어야 하고, 다른 사람이 봐도 의도를 이해할 수 있어야 한다고 정정했다.
+- Rule: 이 저장소에서는 사용자가 다른 언어를 명시하지 않는 한 TSDoc을 한국어로 작성한다.
 - Rule: Do not repeat TypeScript types in prose. Explain behavior, edge cases, failure handling, and examples when useful.
 - Rule: Use inline comments only for non-obvious implementation intent, especially around external side effects and safety boundaries.
 
@@ -97,3 +99,9 @@
 - Correction: The user clarified that test-only changes should use the `test` commit type and commit messages should be written in Korean.
 - Rule: In this repository, split test-only diffs into `test ( #issue ) : ...` commits when the user asks for detailed commit separation.
 - Rule: Write commit subjects and bodies in Korean unless the user requests another language; keep required trailer keys in the Lore format.
+
+## Distinguish parser success from evidence quality
+
+- Correction: The user asked whether a successfully parsed inquiry result was normal, and the remaining defect was unrelated Notion/GitHub evidence being promoted as `found`.
+- Rule: Treat valid JSON parsing, route selection, and retrieved-evidence relevance as separate quality gates.
+- Rule: For external evidence search, put intent-specific safe terms ahead of broad source terms, and do not let operational task files become product or implementation evidence.
