@@ -55,6 +55,24 @@ describe('renderInquiryMessage', () => {
     expect(JSON.stringify(result.components)).toContain(`reject:${baseInquiry.inquiryId}`);
   });
 
+  it('should show optional device information when the form supplied it', () => {
+    // Arrange
+    const inquiry = { ...baseInquiry, deviceInfo: 'One UI 6' };
+    const draft = {
+      inquiryId: baseInquiry.inquiryId,
+      summary: '알림 문의',
+      subject: '알림 문의 답변드립니다',
+      body: '알림 설정 확인이 필요합니다.',
+      missingInformation: [],
+    };
+
+    // Act
+    const result = renderInquiryMessage({ inquiry, draft });
+
+    // Assert
+    expect(result.content).toContain('단말기: One UI 6');
+  });
+
   it('should render internal evidence review collapsed by default', () => {
     // Act
     const result = renderInquiryMessage({ inquiry: baseInquiry, draft: evidenceDraft });

@@ -19,6 +19,23 @@ describe('geminiDraftGenerator', () => {
     expect(result).toContain(baseInquiry.message);
   });
 
+  it('should tell the model not to request already provided device details again', () => {
+    // Arrange
+    const inquiry = {
+      ...baseInquiry,
+      deviceInfo: 'One UI 6',
+      message: '앱 알림을 켰는데 알림이 오지 않습니다.',
+    };
+
+    // Act
+    const result = buildDraftPrompt(inquiry, []);
+
+    // Assert
+    expect(result).toContain('Provided Device Info: One UI 6');
+    expect(result).toContain('Do not ask again for device model or OS version if that detail is already present');
+    expect(result).toContain('ask only for the missing detail');
+  });
+
   it('should mark internal evidence as untrusted quoted data', () => {
     // Arrange
     const evidenceReview: EvidenceReview = {

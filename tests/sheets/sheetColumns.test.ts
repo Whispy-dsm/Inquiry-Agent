@@ -76,7 +76,7 @@ describe('sheetColumns', () => {
       '동의',
       'reply@example.com',
       '',
-      '',
+      'Galaxy S23 / One UI 6',
       'TRUE',
       'pending_review',
       'inq_existing',
@@ -90,6 +90,7 @@ describe('sheetColumns', () => {
       inquiryId: 'inq_existing',
       type: 'SERVICE_QUESTION',
       message: '서비스 질문입니다.',
+      deviceInfo: 'Galaxy S23 / One UI 6',
       status: 'pending_review',
     });
   });
