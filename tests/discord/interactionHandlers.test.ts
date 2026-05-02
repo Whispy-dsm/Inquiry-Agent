@@ -1,7 +1,80 @@
 import { describe, expect, it, vi } from 'vitest';
 import { handleEditSubmit, handleEditSubmitSend, handleReviewButton } from '../../src/discord/interactionHandlers.js';
+import { renderInquiryMessage } from '../../src/discord/renderInquiryMessage.js';
+import { baseInquiry } from '../fixtures/inquiries.js';
 
 describe('handleReviewButton', () => {
+  it('should expand internal evidence without acquiring the review lock', async () => {
+    // Arrange
+    const inquiry = { ...baseInquiry, inquiryId: 'inq_1' };
+    const rendered = renderInquiryMessage({
+      inquiry,
+      draft: {
+        inquiryId: inquiry.inquiryId,
+        summary: '알림 문의',
+        subject: '확인 후 안내드리겠습니다',
+        body: '담당자가 확인 후 안내가 필요합니다.',
+        missingInformation: [],
+        evidenceReview: {
+          route: 'need_multi_source_evidence',
+          reason: 'Backend FCM and Flutter notification permission should be checked.',
+          requestedSources: ['backend', 'flutter', 'notion'],
+          confidence: 'medium',
+          needsCheck: 'Verify notification permission and push delivery evidence.',
+          conflicts: [],
+          evidence: [{
+            sourceType: 'backend',
+            authority: 'implementation-behavior',
+            title: 'backend notification',
+            source: 'src/notifications/fcm.ts',
+            snippet: 'sendFcmPushNotification sends push notifications.',
+            status: 'found',
+            retrievalSignals: ['keyword', 'ast'],
+            score: 7,
+          }],
+        },
+      },
+    });
+    const interaction = {
+      customId: 'evidenceOpen:inq_1',
+      user: { id: 'discord_user_1' },
+      message: { content: rendered.content },
+      reply: vi.fn(),
+      update: vi.fn(),
+      deferUpdate: vi.fn(),
+      editReply: vi.fn(),
+      followUp: vi.fn(),
+      showModal: vi.fn(),
+    };
+    const deps = {
+      lock: {
+        tryAcquire: vi.fn(),
+        release: vi.fn(),
+      },
+      sheets: {
+        findInquiryReview: vi.fn(),
+        updateManagedFields: vi.fn(),
+      },
+      gmail: {
+        sendEmail: vi.fn(),
+      },
+      fromEmail: 'support@example.com',
+      fromName: 'Support Team',
+    };
+
+    // Act
+    await handleReviewButton(interaction as never, deps as never);
+
+    // Assert
+    expect(deps.lock.tryAcquire).not.toHaveBeenCalled();
+    expect(interaction.update).toHaveBeenCalledWith({
+      content: expect.stringContaining('src/notifications/fcm.ts'),
+      components: expect.any(Array),
+    });
+    expect(JSON.stringify(interaction.update.mock.calls[0]?.[0]?.components)).toContain('evidenceClose:inq_1');
+    expect(interaction.reply).not.toHaveBeenCalled();
+  });
+
   it('should open an edit modal with draft subject and body prefilled', async () => {
     // Arrange
     const showModal = vi.fn();
