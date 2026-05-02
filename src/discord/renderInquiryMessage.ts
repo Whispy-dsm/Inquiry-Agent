@@ -13,6 +13,7 @@ export function renderInquiryMessage(input: {
     `새 문의 검토 요청: ${inquiry.inquiryId}`,
     `유형: ${inquiry.type}`,
     `고객: ${inquiry.name} <${inquiry.email}>`,
+    ...(inquiry.deviceInfo ? [`단말기: ${inquiry.deviceInfo}`] : []),
     '',
     `요약: ${draft.summary}`,
     '',

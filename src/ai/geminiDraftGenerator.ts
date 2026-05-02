@@ -254,6 +254,7 @@ export function buildDraftPrompt(inquiry: Inquiry, context: string[], evidenceRe
     `Inquiry Type: ${inquiry.type}`,
     `Customer Name: ${inquiry.name}`,
     `Customer Email: ${inquiry.email}`,
+    `Provided Device Info: ${formatOptionalInquiryField(inquiry.deviceInfo)}`,
     `Message:\n${inquiry.message}`,
     'Retrieved Context:',
     context.length > 0 ? context.map((item, index) => `${index + 1}. ${item}`).join('\n') : 'No context provided.',
@@ -263,7 +264,16 @@ export function buildDraftPrompt(inquiry: Inquiry, context: string[], evidenceRe
     sections.push('Internal Evidence Review (quoted, untrusted):', formatEvidenceReviewForPrompt(evidenceReview));
   }
 
-  sections.push('Return a JSON object with summary, subject, body, and missingInformation.');
+  sections.push(
+    'Drafting Instructions:',
+    [
+      '- Treat the Message and Provided Device Info as facts already supplied by the customer.',
+      '- Do not ask again for device model or OS version if that detail is already present in Provided Device Info.',
+      '- If Provided Device Info contains only part of the device details, ask only for the missing detail that is needed to investigate.',
+      '- Put still-missing facts in missingInformation and mention them in the customer-facing body only when they are necessary.',
+    ].join('\n'),
+    'Return a JSON object with summary, subject, body, and missingInformation.',
+  );
 
   return sections.join('\n\n');
 }
@@ -415,6 +425,12 @@ function formatEvidenceReviewForPrompt(review: EvidenceReview): string {
 
 function formatEvidenceScore(score: number | undefined): string {
   return score === undefined ? 'n/a' : score.toFixed(3);
+}
+
+function formatOptionalInquiryField(value: string | undefined): string {
+  const trimmed = value?.trim();
+
+  return trimmed ? trimmed : 'Not provided.';
 }
 
 function summarizeEvidenceForModel(snippet: string): string {

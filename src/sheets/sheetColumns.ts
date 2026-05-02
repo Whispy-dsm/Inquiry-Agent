@@ -6,6 +6,7 @@ const timestampHeaders = ['타임스탬프', 'Timestamp'] as const;
 const typeHeaders = ['문의 유형을 선택해 주세요', '문의 유형'] as const;
 const replyEmailHeaders = ['답변 받으실 이메일 주소를 입력해주세요.', 'Email Address'] as const;
 const nameHeaders = ['이름'] as const;
+const deviceInfoHeaders = ['단말기 정보를 입력해주세요 ( 선택사항, 단말기 모델명과 OS 버전)'] as const;
 const inquiryIdHeaders = ['inquiry_id'] as const;
 const statusHeaders = ['status'] as const;
 const completionHeaders = ['완료 여부'] as const;
@@ -92,6 +93,7 @@ export function isCompletionChecked(headers: string[], row: string[]): boolean {
 /** Google Sheet의 header/row 배열을 내부 Inquiry 모델로 변환합니다. */
 export function mapRowToInquiry(headers: string[], row: string[], rowNumber: number): Inquiry {
   const type = normalizeInquiryType(getCellValue(headers, row, typeHeaders));
+  const deviceInfo = getCellValue(headers, row, deviceInfoHeaders);
 
   return {
     inquiryId: getCellValue(headers, row, inquiryIdHeaders) || `inq_${rowNumber}`,
@@ -101,6 +103,7 @@ export function mapRowToInquiry(headers: string[], row: string[], rowNumber: num
     name: getCellValue(headers, row, nameHeaders),
     type,
     message: getInquiryMessage(headers, row, type),
+    ...(deviceInfo ? { deviceInfo } : {}),
     status: normalizeStatus(getCellValue(headers, row, statusHeaders)),
   };
 }

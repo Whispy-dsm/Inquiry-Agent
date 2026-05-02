@@ -36,6 +36,8 @@ export interface Inquiry {
   type: InquiryType;
   /** 사용자가 제출한 문의 본문입니다. */
   message: string;
+  /** Google Form의 선택 입력값으로 받은 단말기 모델명과 OS 버전 등 기기 정보입니다. */
+  deviceInfo?: string;
   /** 현재 처리 상태입니다. */
   status: InquiryStatus;
 }
