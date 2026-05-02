@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import * as ts from 'typescript';
 import type { Inquiry } from '../domain/inquiry.js';
 import type {
   EvidenceAuthority,
@@ -1081,16 +1082,7 @@ async function extractTypeScriptSymbols(
   }
 
   try {
-    const ts = await importTypeScriptCompilerWithin(10_000);
-
-    if (!ts) {
-      return {
-        symbols: extractTypeScriptSymbolsHeuristic(content),
-        signal: 'symbol',
-      };
-    }
-
-    const scriptKindByExtension: Record<string, import('typescript').ScriptKind> = {
+    const scriptKindByExtension: Record<string, ts.ScriptKind> = {
       '.ts': ts.ScriptKind.TS,
       '.tsx': ts.ScriptKind.TSX,
       '.js': ts.ScriptKind.JS,
@@ -1105,12 +1097,12 @@ async function extractTypeScriptSymbols(
     );
     const symbols: string[] = [];
 
-    const addName = (name: import('typescript').PropertyName | import('typescript').DeclarationName | undefined): void => {
+    const addName = (name: ts.PropertyName | ts.DeclarationName | undefined): void => {
       if (name && ts.isIdentifier(name)) {
         symbols.push(name.text);
       }
     };
-    const visit = (node: import('typescript').Node): void => {
+    const visit = (node: ts.Node): void => {
       if (
         ts.isClassDeclaration(node)
         || ts.isFunctionDeclaration(node)
@@ -1140,39 +1132,6 @@ async function extractTypeScriptSymbols(
       symbols: extractTypeScriptSymbolsHeuristic(content),
       signal: 'symbol',
     };
-  }
-}
-
-let typescriptCompilerPromise: Promise<typeof import('typescript')> | undefined;
-
-function importTypeScriptCompilerWithin(timeoutMs: number): Promise<typeof import('typescript') | null> {
-  typescriptCompilerPromise ??= import('typescript');
-
-  return new Promise((resolve) => {
-    const timeout = setTimeout(() => resolve(null), timeoutMs);
-    unrefTimer(timeout);
-
-    typescriptCompilerPromise
-      ?.then((compiler) => {
-        clearTimeout(timeout);
-        resolve(compiler);
-      })
-      .catch(() => {
-        clearTimeout(timeout);
-        resolve(null);
-      });
-  });
-}
-
-function unrefTimer(timer: ReturnType<typeof setTimeout>): void {
-  if (typeof timer !== 'object' || timer === null) {
-    return;
-  }
-
-  const maybeUnref = (timer as { unref?: unknown }).unref;
-
-  if (typeof maybeUnref === 'function') {
-    maybeUnref.call(timer);
   }
 }
 
