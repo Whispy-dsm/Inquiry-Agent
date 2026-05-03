@@ -611,6 +611,71 @@ describe('GitHubCodeSearchEvidenceSource', () => {
     ]);
   });
 
+  it('should reject storage configuration that matches framework profile but not profile image behavior', async () => {
+    // Arrange
+    const content = [
+      'import org.springframework.context.annotation.Configuration;',
+      'import org.springframework.context.annotation.Profile;',
+      '@Configuration',
+      '@Profile("prod")',
+      'public class R2Config {',
+      '  public S3Client s3Client() { return null; }',
+      '}',
+    ].join('\n');
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          items: [{
+            path: 'src/main/java/whispy_server/whispy/global/config/r2/R2Config.java',
+            url: 'https://github.example/api/repos/whispy/backend/contents/src/main/java/whispy_server/whispy/global/config/r2/R2Config.java',
+            html_url: 'https://github.example/whispy/backend/blob/main/src/main/java/whispy_server/whispy/global/config/r2/R2Config.java',
+            repository: { full_name: 'whispy/backend' },
+            text_matches: [{ fragment: 'org.springframework.context.annotation.Profile' }],
+          }],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          type: 'file',
+          encoding: 'base64',
+          size: Buffer.byteLength(content, 'utf8'),
+          content: Buffer.from(content, 'utf8').toString('base64'),
+        }),
+      });
+    fetchFn.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ items: [] }),
+    });
+    const target = new GitHubCodeSearchEvidenceSource(
+      'backend',
+      [{ owner: 'whispy', repo: 'backend' }],
+      'implementation-behavior',
+      {
+        apiBaseUrl: 'https://github.example/api',
+        fetchFn,
+      },
+    );
+
+    // Act
+    const result = await target.findEvidence(
+      { ...baseInquiry, message: '프로필 사진을 새로 업로드했는데 이전 사진 복구가 가능한가요?' },
+      profileImageRouteDecision,
+    );
+
+    // Assert
+    expect(result).toEqual([
+      expect.objectContaining({
+        sourceType: 'backend',
+        status: 'empty',
+      }),
+    ]);
+  });
+
   it('should search flutter profile image upload and delete code through route narrative terms', async () => {
     // Arrange
     const content = [
@@ -1019,6 +1084,50 @@ describe('NotionApiEvidenceSource', () => {
     expect(body.query).not.toContain('music');
     expect(body.query).not.toContain('account');
     expect(body.query).not.toContain('user');
+    expect(result).toEqual([
+      expect.objectContaining({
+        sourceType: 'notion',
+        status: 'empty',
+        snippet: 'No Notion page content matched the routed policy inquiry.',
+      }),
+    ]);
+  });
+
+  it('should not promote Notion pages that only mention generic profile settings for profile image evidence', async () => {
+    // Arrange
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          results: [
+            notionPage('page-1', 'Whispy profile music guide', 'https://notion.example/profile-music'),
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          results: [
+            notionHeading('block-1', 'Profile display settings'),
+            notionParagraph('block-2', 'Profile display preferences and music playback are documented here.'),
+          ],
+        }),
+      });
+    const target = new NotionApiEvidenceSource({
+      token: 'notion-token',
+      apiBaseUrl: 'https://notion.example',
+      fetchFn,
+    });
+
+    // Act
+    const result = await target.findEvidence(
+      { ...baseInquiry, message: '프로필 사진을 새로 업로드했는데 이전 사진 복구가 가능한가요?' },
+      profileImageRouteDecision,
+    );
+
+    // Assert
     expect(result).toEqual([
       expect.objectContaining({
         sourceType: 'notion',

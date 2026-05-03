@@ -1265,21 +1265,28 @@ function hasEnoughRelevance(normalizedText: string, symbols: string[], terms: st
   const matchedTerms = terms.filter((term) => normalizedText.includes(term));
   const priorityTerms = terms
     .filter((term) => !genericRelevanceTerms.has(term))
-    .slice(0, 3);
+    .slice(0, 4);
   const normalizedSymbols = symbols.map(normalizeSymbol).join('\n');
   const matchedPriorityTerms = priorityTerms.filter((term) => normalizedText.includes(term) || normalizedSymbols.includes(term));
 
-  return matchedPriorityTerms.length > 0 && matchedTerms.length >= Math.min(2, terms.length);
+  if (matchedPriorityTerms.length > 0 && matchedTerms.length >= Math.min(2, terms.length)) {
+    return true;
+  }
+
+  return matchedPriorityTerms.some((term) => term.length >= 10 && normalizedSymbols.includes(term));
 }
 
 const genericRelevanceTerms = new Set([
   'history',
+  'profile',
+  'profiles',
   'previous',
   'recovery',
   'restoration',
   'stores',
   'storage',
   'update',
+  'updated',
 ]);
 
 function countOccurrences(text: string, term: string): number {
