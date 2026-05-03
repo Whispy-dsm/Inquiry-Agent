@@ -1074,7 +1074,7 @@ function buildExternalEvidenceTermGroups(
   const narrativeTerms = safeNarrativeTerms(`${decision.reason}\n${decision.needsCheck}`);
 
   if (narrativeTerms.length > 0) {
-    return narrativeTerms.slice(0, 3).map((term) => [term]);
+    return narrativeTerms.slice(0, 6).map((term) => [term]);
   }
 
   const terms = [
@@ -1087,10 +1087,10 @@ function buildExternalEvidenceTermGroups(
 
 function buildFocusedEvidenceTerms(
   inquiry: Inquiry,
-  decision: EvidenceRouteDecision,
+  _decision: EvidenceRouteDecision,
 ): string[] {
   return uniqueEvidenceTerms(
-    safeIntentTerms(`${inquiry.type}\n${inquiry.message}\n${decision.reason}\n${decision.needsCheck}`),
+    safeIntentTerms(`${inquiry.type}\n${inquiry.message}`),
   );
 }
 
@@ -1113,9 +1113,14 @@ const narrativeStopWords = new Set([
   'an',
   'and',
   'are',
+  'asking',
+  'asks',
+  'backend',
   'behavior',
   'check',
   'checked',
+  'client',
+  'clients',
   'confirm',
   'customer',
   'customer-facing',
@@ -1123,6 +1128,7 @@ const narrativeStopWords = new Set([
   'evidence',
   'facing',
   'feature',
+  'flutter',
   'for',
   'implementation',
   'internal',
@@ -1139,20 +1145,38 @@ const narrativeStopWords = new Set([
   'source',
   'support',
   'the',
+  'user',
+  'users',
   'verify',
+  'whether',
 ]);
 
 function safeNarrativeTerms(text: string): string[] {
-  return uniqueEvidenceTerms(tokenize(text))
+  const normalizedText = text.toLowerCase();
+  const rankedTerms = uniqueEvidenceTerms(tokenize(text))
     .filter((term) => term.length >= 3)
     .filter((term) => term.length <= 40)
     .filter((term) => !term.includes('/'))
     .filter((term) => !narrativeStopWords.has(term))
     .filter((term) => !looksSensitiveSearchTerm(term));
+
+  return rankedTerms.sort((left, right) => {
+    const scoreDelta = narrativeTermScore(right, normalizedText) - narrativeTermScore(left, normalizedText);
+
+    if (scoreDelta !== 0) {
+      return scoreDelta;
+    }
+
+    return normalizedText.indexOf(left) - normalizedText.indexOf(right);
+  });
 }
 
 function looksSensitiveSearchTerm(term: string): boolean {
   return /\d{4,}/.test(term) || /[a-f0-9]{16,}/i.test(term);
+}
+
+function narrativeTermScore(term: string, normalizedText: string): number {
+  return countOccurrences(normalizedText, term) * 10 + Math.min(term.length, 12);
 }
 
 function safeSourceTerms(sourceType: InternalEvidenceSourceType): string[] {
@@ -1181,7 +1205,7 @@ function safeIntentTerms(text: string): string[] {
   const rules: Array<{ pattern: RegExp; terms: string[] }> = [
     { pattern: /동시|concurrent|multi|multiple|simultaneous/i, terms: ['concurrent', 'session'] },
     { pattern: /로그인|login|auth|인증/i, terms: ['auth', 'login', 'session', 'token'] },
-    { pattern: /계정|account|user/i, terms: ['account', 'user'] },
+    { pattern: /계정|account/i, terms: ['account', 'user'] },
     { pattern: /알림|notification|push|fcm|firebase/i, terms: ['notification', 'push'] },
     { pattern: /기록|history|record|log/i, terms: ['record', 'history'] },
     { pattern: /결제|구독|환불|payment|subscription|billing|refund/i, terms: ['payment', 'subscription', 'billing'] },

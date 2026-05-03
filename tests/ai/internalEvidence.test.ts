@@ -37,10 +37,17 @@ const notificationRouteDecision: EvidenceRouteDecision = {
 
 const profileImageRouteDecision: EvidenceRouteDecision = {
   route: 'need_multi_source_evidence',
-  reason: 'ProfileImageUrl replacement and restoration behavior should be checked.',
+  reason: [
+    'The user is asking about data recovery after a previous profile photo update.',
+    'Product knowledge confirms profile photos can be modified, but it is silent on history or restoration.',
+    'Check the backend data model for image storage and the Flutter client profile update flow.',
+  ].join(' '),
   requestedSources: ['backend', 'flutter', 'notion'],
   confidence: 'medium',
-  needsCheck: 'Verify profileImageUrl replacement and restoration behavior.',
+  needsCheck: [
+    'Verify if the backend stores previous profile image URLs.',
+    'Verify if the client overwrites the existing image resource upon upload.',
+  ].join(' '),
   conflicts: [],
 };
 
@@ -504,9 +511,11 @@ describe('GitHubCodeSearchEvidenceSource', () => {
     // Assert
     const url = String(fetchFn.mock.calls[0]?.[0]);
     const query = decodeURIComponent(new URL(url).searchParams.get('q') ?? '');
-    expect(query).toContain('profileimageurl');
+    expect(query).toContain('profile');
     expect(query).toContain('repo:whispy/backend');
     expect(query).not.toContain('auth');
+    expect(query).not.toContain('account');
+    expect(query).not.toContain('user');
     expect(result[0]).toEqual(expect.objectContaining({
       sourceType: 'backend',
       status: 'found',
@@ -569,9 +578,11 @@ describe('GitHubCodeSearchEvidenceSource', () => {
     // Assert
     const url = String(fetchFn.mock.calls[0]?.[0]);
     const query = decodeURIComponent(new URL(url).searchParams.get('q') ?? '');
-    expect(query).toContain('profileimageurl');
+    expect(query).toContain('profile');
     expect(query).toContain('repo:whispy/flutter');
     expect(query).not.toContain('auth');
+    expect(query).not.toContain('account');
+    expect(query).not.toContain('user');
     expect(result[0]).toEqual(expect.objectContaining({
       sourceType: 'flutter',
       status: 'found',
@@ -918,8 +929,10 @@ describe('NotionApiEvidenceSource', () => {
 
     // Assert
     const body = JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body));
-    expect(body.query).toContain('profileimageurl');
+    expect(body.query).toContain('profile');
     expect(body.query).not.toContain('music');
+    expect(body.query).not.toContain('account');
+    expect(body.query).not.toContain('user');
     expect(result).toEqual([
       expect.objectContaining({
         sourceType: 'notion',
