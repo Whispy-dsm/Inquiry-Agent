@@ -53,11 +53,16 @@ describe('renderInquiryMessage', () => {
     expect(JSON.stringify(result.components)).toContain(`approve:${baseInquiry.inquiryId}`);
     expect(JSON.stringify(result.components)).toContain(`edit:${baseInquiry.inquiryId}`);
     expect(JSON.stringify(result.components)).toContain(`reject:${baseInquiry.inquiryId}`);
+    expect(JSON.stringify(result.components)).toContain(`inquiryOpen:${baseInquiry.inquiryId}`);
   });
 
-  it('should show optional device information when the form supplied it', () => {
+  it('should render customer inquiry details only when expanded', () => {
     // Arrange
-    const inquiry = { ...baseInquiry, deviceInfo: 'One UI 6' };
+    const inquiry = {
+      ...baseInquiry,
+      deviceInfo: 'One UI 6',
+      message: '앱 알림을 켰는데 알림이 오지 않습니다.',
+    };
     const draft = {
       inquiryId: baseInquiry.inquiryId,
       summary: '알림 문의',
@@ -67,10 +72,17 @@ describe('renderInquiryMessage', () => {
     };
 
     // Act
-    const result = renderInquiryMessage({ inquiry, draft });
+    const collapsed = renderInquiryMessage({ inquiry, draft });
+    const expanded = renderInquiryMessage({ inquiry, draft, inquiryExpanded: true });
 
     // Assert
-    expect(result.content).toContain('단말기: One UI 6');
+    expect(collapsed.content).not.toContain('단말기: One UI 6');
+    expect(collapsed.content).not.toContain('앱 알림을 켰는데 알림이 오지 않습니다.');
+    expect(JSON.stringify(collapsed.components)).toContain(`inquiryOpen:${baseInquiry.inquiryId}`);
+    expect(expanded.content).toContain('문의 원문');
+    expect(expanded.content).toContain('단말기: One UI 6');
+    expect(expanded.content).toContain('앱 알림을 켰는데 알림이 오지 않습니다.');
+    expect(JSON.stringify(expanded.components)).toContain(`inquiryClose:${baseInquiry.inquiryId}`);
   });
 
   it('should render internal evidence review collapsed by default', () => {
@@ -84,6 +96,7 @@ describe('renderInquiryMessage', () => {
     expect(result.content).not.toContain('auth/session.ts');
     expect(result.content).not.toContain('signals: keyword+ast+embedding');
     expect(JSON.stringify(result.components)).toContain(`evidenceOpen:${baseInquiry.inquiryId}`);
+    expect(JSON.stringify(result.components)).toContain(`inquiryOpen:${baseInquiry.inquiryId}`);
   });
 
   it('should render internal evidence review details when expanded', () => {
