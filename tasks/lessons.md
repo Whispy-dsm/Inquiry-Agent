@@ -121,3 +121,5 @@
 - Rule: Evidence retrieval should prefer route narrative search terms and relevance gates over raw feature-specific fallback keywords.
 - Correction: The user pointed out that adding a profile-specific term repeats the same keyword-expansion problem for future inquiry types.
 - Rule: Do not add feature-specific inquiry keywords unless explicitly accepted; use generic safe query expansion from route explanations and small independent GitHub queries first.
+- Correction: The user reported that a GitHub issue body was garbled after creation.
+- Rule: Do not pipe Korean GitHub issue bodies through PowerShell stdin; pass the body as a Unicode argument or another verified UTF-8-safe path, then re-read the issue body before claiming success.
