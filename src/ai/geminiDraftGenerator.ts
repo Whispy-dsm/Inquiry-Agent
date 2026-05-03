@@ -66,11 +66,11 @@ const draftResponseSchema = {
   properties: {
     summary: {
       type: Type.STRING,
-      description: 'Short reviewer-facing summary of the customer inquiry.',
+      description: 'Short Korean reviewer-facing summary of the customer inquiry.',
     },
     subject: {
       type: Type.STRING,
-      description: 'Customer-facing email subject.',
+      description: 'Customer-facing Korean email subject.',
     },
     body: {
       type: Type.STRING,
@@ -78,7 +78,7 @@ const draftResponseSchema = {
     },
     missingInformation: {
       type: Type.ARRAY,
-      description: 'Facts a human reviewer must confirm before sending.',
+      description: 'Korean list of facts a human reviewer must confirm before sending.',
       items: {
         type: Type.STRING,
       },
@@ -206,25 +206,9 @@ export class GeminiDraftGenerator {
           temperature: 0,
         },
       });
-      decision = parseEvidenceRouteDecision(routeResponse.text ?? '');
+      decision = enforceCrossSourceEvidence(parseEvidenceRouteDecision(routeResponse.text ?? ''));
     } catch (error) {
-      return routeCallFailedReview(error);
-    }
-
-    if (decision.route === 'answer_from_rag') {
-      return undefined;
-    }
-
-    if (decision.route === 'escalate_manual') {
-      return {
-        route: decision.route,
-        reason: decision.reason,
-        requestedSources: [],
-        evidence: [],
-        conflicts: decision.conflicts,
-        confidence: 'low',
-        needsCheck: decision.needsCheck,
-      };
+      decision = enforceCrossSourceEvidence(routeCallFailedDecision(error));
     }
 
     const evidence = await this.options.internalEvidenceProvider.findEvidence(inquiry, decision);
@@ -268,11 +252,12 @@ export function buildDraftPrompt(inquiry: Inquiry, context: string[], evidenceRe
     'Drafting Instructions:',
     [
       '- Treat the Message and Provided Device Info as facts already supplied by the customer.',
+      '- Write summary, subject, body, and missingInformation in Korean.',
       '- Do not ask again for device model or OS version if that detail is already present in Provided Device Info.',
       '- If Provided Device Info contains only part of the device details, ask only for the missing detail that is needed to investigate.',
       '- Put still-missing facts in missingInformation and mention them in the customer-facing body only when they are necessary.',
     ].join('\n'),
-    'Return a JSON object with summary, subject, body, and missingInformation.',
+    'Return a JSON object with Korean summary, subject, body, and missingInformation.',
   );
 
   return sections.join('\n\n');
@@ -306,7 +291,7 @@ export function parseDraftJson(inquiry: Inquiry, modelOutput: string): InquiryDr
 
     return {
       inquiryId: inquiry.inquiryId,
-      summary: parsed.summary,
+      summary: normalizeKoreanSummary(inquiry, parsed.summary),
       subject: parsed.subject,
       body: parsed.body,
       missingInformation: parsed.missingInformation,
@@ -314,7 +299,7 @@ export function parseDraftJson(inquiry: Inquiry, modelOutput: string): InquiryDr
   } catch {
     return {
       inquiryId: inquiry.inquiryId,
-      summary: 'AI draft parsing failed',
+      summary: '초안 생성 결과 파싱 실패',
       subject: '문의 확인 후 안내드리겠습니다',
       body: `${inquiry.name}님, 안녕하세요.\n\n문의해 주셔서 감사합니다. 남겨주신 내용은 담당자가 확인한 뒤 정확히 안내드리겠습니다.\n\n감사합니다.`,
       missingInformation: ['AI draft could not be parsed.'],
@@ -366,9 +351,44 @@ const internalEvidenceRouterSystemPrompt = [
   'Use Backend for server/API/auth/data/config behavior.',
   'Use Flutter for app UI, local state, storage, permissions, and user-visible client behavior.',
   'Use Notion for product policy, feature definitions, and customer-facing guidance.',
-  'If evidence is unclear, conflicting, or authority is outside available sources, choose escalate_manual.',
+  'Always cross-check with Backend, Flutter, and Notion evidence when internal evidence is enabled; the model may explain priority but must not reduce the source set.',
+  'If evidence is unclear, conflicting, or authority is outside available sources, set low confidence and explain it in conflicts and needsCheck.',
   'Return strict JSON only.',
 ].join('\n');
+
+function enforceCrossSourceEvidence(decision: EvidenceRouteDecision): EvidenceRouteDecision {
+  return normalizeRouteDecision({
+    ...decision,
+    route: 'need_multi_source_evidence',
+    reason: appendSentence(
+      decision.reason,
+      'Internal evidence is always cross-checked across Backend, Flutter, and Notion.',
+    ),
+    requestedSources: uniqueSources([
+      'backend',
+      'flutter',
+      'notion',
+      ...decision.requestedSources.filter((source) => source !== 'rag'),
+    ]),
+    confidence: decision.confidence === 'high' ? 'medium' : decision.confidence,
+    needsCheck: appendSentence(
+      decision.needsCheck,
+      '내부 근거는 Backend 구현, Flutter 클라이언트 동작, Notion 정책을 항상 교차 확인해야 합니다.',
+    ),
+  });
+}
+
+function uniqueSources(sources: EvidenceSourceType[]): EvidenceSourceType[] {
+  return Array.from(new Set(sources));
+}
+
+function appendSentence(value: string, sentence: string): string {
+  if (value.includes(sentence)) {
+    return value;
+  }
+
+  return `${value.trim()} ${sentence}`.trim();
+}
 
 function normalizeRouteDecision(input: EvidenceRouteDecision): EvidenceRouteDecision {
   const requestedSources = normalizeRequestedSources(input.route, input.requestedSources);
@@ -427,6 +447,23 @@ function formatEvidenceScore(score: number | undefined): string {
   return score === undefined ? 'n/a' : score.toFixed(3);
 }
 
+function normalizeKoreanSummary(inquiry: Inquiry, summary: string): string {
+  const trimmed = summary.trim();
+
+  if (/[가-힣]/.test(trimmed)) {
+    return trimmed;
+  }
+
+  const fallbackByType: Record<Inquiry['type'], string> = {
+    APP_ERROR: '앱 오류 문의',
+    SERVICE_QUESTION: '서비스 문의',
+    SUGGESTION: '건의사항 문의',
+    OTHER: '기타 문의',
+  };
+
+  return fallbackByType[inquiry.type];
+}
+
 function formatOptionalInquiryField(value: string | undefined): string {
   const trimmed = value?.trim();
 
@@ -474,14 +511,13 @@ function downgradeConfidenceForEvidenceFailures(
   return confidence;
 }
 
-function routeCallFailedReview(error: unknown): EvidenceReview {
+function routeCallFailedDecision(error: unknown): EvidenceRouteDecision {
   const message = error instanceof Error ? error.message : String(error);
 
   return {
     route: 'escalate_manual',
     reason: 'Internal evidence route call failed.',
     requestedSources: [],
-    evidence: [],
     conflicts: [`Internal evidence route call failed: ${message}`],
     confidence: 'low',
     needsCheck: '내부 근거 라우터 호출이 실패했으므로 담당자가 직접 확인해야 합니다.',

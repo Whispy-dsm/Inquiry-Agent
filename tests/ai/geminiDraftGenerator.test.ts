@@ -19,6 +19,16 @@ describe('geminiDraftGenerator', () => {
     expect(result).toContain(baseInquiry.message);
   });
 
+  it('should instruct the model to write the summary in Korean', () => {
+    // Act
+    const result = buildDraftPrompt(baseInquiry, []);
+
+    // Assert
+    expect(draftSystemPrompt).toContain('summary, subject, body, and missingInformation values must be written in Korean');
+    expect(result).toContain('Write summary, subject, body, and missingInformation in Korean.');
+    expect(result).toContain('Return a JSON object with Korean summary');
+  });
+
   it('should tell the model not to request already provided device details again', () => {
     // Arrange
     const inquiry = {
@@ -134,6 +144,22 @@ describe('geminiDraftGenerator', () => {
     });
   });
 
+  it('should replace non-Korean draft summaries with a Korean inquiry-type summary', () => {
+    // Arrange
+    const modelOutput = JSON.stringify({
+      summary: 'Notification issue',
+      subject: '문의 답변드립니다',
+      body: '안녕하세요. 안내드립니다.',
+      missingInformation: [],
+    });
+
+    // Act
+    const result = parseDraftJson(baseInquiry, modelOutput);
+
+    // Assert
+    expect(result.summary).toBe('서비스 문의');
+  });
+
   it('should fall back to a safe draft when model output is invalid JSON', () => {
     // Arrange
     const modelOutput = 'not json';
@@ -142,6 +168,7 @@ describe('geminiDraftGenerator', () => {
     const result = parseDraftJson(baseInquiry, modelOutput);
 
     // Assert
+    expect(result.summary).toBe('초안 생성 결과 파싱 실패');
     expect(result.subject).toBe('문의 확인 후 안내드리겠습니다');
     expect(result.body).toContain('담당자가 확인');
     expect(result.missingInformation).toEqual(['AI draft could not be parsed.']);

@@ -109,13 +109,14 @@ describe('GeminiDraftGenerator', () => {
     expect(internalEvidenceProvider.findEvidence).toHaveBeenCalledWith(
       expect.objectContaining({ message: '위스피는 동시 로그인이 안 되나요?' }),
       expect.objectContaining({
-        route: 'need_backend_evidence',
-        requestedSources: ['backend'],
+        route: 'need_multi_source_evidence',
+        requestedSources: ['backend', 'flutter', 'notion'],
       }),
     );
     expect(result.evidenceReview).toEqual(
       expect.objectContaining({
-        route: 'need_backend_evidence',
+        route: 'need_multi_source_evidence',
+        requestedSources: ['backend', 'flutter', 'notion'],
         confidence: 'medium',
         evidence: [
           expect.objectContaining({
@@ -165,9 +166,9 @@ describe('GeminiDraftGenerator', () => {
           })
           .mockResolvedValueOnce({
             text: JSON.stringify({
-              summary: 'App issue',
-              subject: 'We will check your inquiry',
-              body: 'A reviewer should confirm the app behavior.',
+              summary: '앱 문의',
+              subject: '문의 확인 후 안내드리겠습니다',
+              body: '담당자가 앱 동작을 확인한 뒤 안내드리겠습니다.',
               missingInformation: [],
             }),
           }),
@@ -210,14 +211,17 @@ describe('GeminiDraftGenerator', () => {
         type: 'OBJECT',
         required: ['summary', 'subject', 'body', 'missingInformation'],
         properties: expect.objectContaining({
-          summary: expect.objectContaining({ type: 'STRING' }),
+          summary: expect.objectContaining({
+            type: 'STRING',
+            description: expect.stringContaining('Korean'),
+          }),
           missingInformation: expect.objectContaining({ type: 'ARRAY' }),
         }),
       }),
     }));
   });
 
-  it('should not call evidence providers when the route escalates manually', async () => {
+  it('should cross-check evidence even when the route escalates manually', async () => {
     // Arrange
     const contextProvider = {
       findRelevantContext: vi.fn().mockResolvedValue([]),
@@ -260,12 +264,151 @@ describe('GeminiDraftGenerator', () => {
     const result = await target.generateDraft(baseInquiry);
 
     // Assert
-    expect(internalEvidenceProvider.findEvidence).not.toHaveBeenCalled();
+    expect(internalEvidenceProvider.findEvidence).toHaveBeenCalledWith(
+      baseInquiry,
+      expect.objectContaining({
+        route: 'need_multi_source_evidence',
+        requestedSources: ['backend', 'flutter', 'notion'],
+        conflicts: ['Authority is unclear.'],
+      }),
+    );
     expect(result.evidenceReview).toEqual(expect.objectContaining({
-      route: 'escalate_manual',
-      requestedSources: [],
+      route: 'need_multi_source_evidence',
+      requestedSources: ['backend', 'flutter', 'notion'],
       evidence: [],
       confidence: 'low',
+    }));
+  });
+
+  it('should force all internal evidence sources even when the model selects Notion only', async () => {
+    // Arrange
+    const inquiry = {
+      ...baseInquiry,
+      message: '회원 탈퇴 시 집중 기록도 삭제되나요?',
+    };
+    const contextProvider = {
+      findRelevantContext: vi.fn().mockResolvedValue([]),
+    };
+    const internalEvidenceProvider = {
+      findEvidence: vi.fn().mockResolvedValue([
+        {
+          sourceType: 'backend',
+          authority: 'implementation-behavior',
+          title: 'withdrawal service',
+          source: 'src/users/withdrawal.ts',
+          snippet: 'deleteFocusSessions(userId)',
+          status: 'found',
+        },
+      ]),
+    };
+    const fakeClient = {
+      models: {
+        generateContent: vi.fn()
+          .mockResolvedValueOnce({
+            text: JSON.stringify({
+              route: 'need_notion_policy',
+              reason: 'Data deletion policy should be checked.',
+              requestedSources: ['notion'],
+              confidence: 'medium',
+              needsCheck: 'Confirm policy.',
+              conflicts: [],
+            }),
+          })
+          .mockResolvedValueOnce({
+            text: JSON.stringify({
+              summary: '탈퇴 데이터 삭제 문의',
+              subject: '회원 탈퇴 시 데이터 삭제 관련 안내',
+              body: '담당자가 정책과 구현을 확인한 뒤 안내드리겠습니다.',
+              missingInformation: [],
+            }),
+          }),
+      },
+    };
+    const target = new GeminiDraftGenerator(
+      'gemini-key',
+      'gemini-2.5-flash-lite',
+      contextProvider as never,
+      fakeClient as never,
+      { internalEvidenceProvider: internalEvidenceProvider as never },
+    );
+
+    // Act
+    const result = await target.generateDraft(inquiry);
+
+    // Assert
+    expect(internalEvidenceProvider.findEvidence).toHaveBeenCalledWith(
+      inquiry,
+      expect.objectContaining({
+        route: 'need_multi_source_evidence',
+        requestedSources: ['backend', 'flutter', 'notion'],
+        needsCheck: expect.stringContaining('Backend 구현, Flutter 클라이언트 동작, Notion 정책'),
+      }),
+    );
+    expect(result.evidenceReview).toEqual(expect.objectContaining({
+      route: 'need_multi_source_evidence',
+      requestedSources: ['backend', 'flutter', 'notion'],
+      evidence: [expect.objectContaining({ sourceType: 'backend' })],
+    }));
+  });
+
+  it('should override answer-from-rag routes with cross-source evidence checks', async () => {
+    // Arrange
+    const inquiry = {
+      ...baseInquiry,
+      message: '계정 삭제하면 데이터 보존 없이 모두 삭제되나요?',
+    };
+    const contextProvider = {
+      findRelevantContext: vi.fn().mockResolvedValue(['FAQ: 탈퇴는 설정에서 할 수 있습니다.']),
+    };
+    const internalEvidenceProvider = {
+      findEvidence: vi.fn().mockResolvedValue([]),
+    };
+    const fakeClient = {
+      models: {
+        generateContent: vi.fn()
+          .mockResolvedValueOnce({
+            text: JSON.stringify({
+              route: 'answer_from_rag',
+              reason: 'RAG can answer.',
+              requestedSources: ['rag'],
+              confidence: 'high',
+              needsCheck: 'No internal check needed.',
+              conflicts: [],
+            }),
+          })
+          .mockResolvedValueOnce({
+            text: JSON.stringify({
+              summary: '계정 삭제 문의',
+              subject: '계정 삭제 관련 안내',
+              body: '담당자가 확인한 뒤 안내드리겠습니다.',
+              missingInformation: [],
+            }),
+          }),
+      },
+    };
+    const target = new GeminiDraftGenerator(
+      'gemini-key',
+      'gemini-2.5-flash-lite',
+      contextProvider as never,
+      fakeClient as never,
+      { internalEvidenceProvider: internalEvidenceProvider as never },
+    );
+
+    // Act
+    const result = await target.generateDraft(inquiry);
+
+    // Assert
+    expect(internalEvidenceProvider.findEvidence).toHaveBeenCalledWith(
+      inquiry,
+      expect.objectContaining({
+        route: 'need_multi_source_evidence',
+        requestedSources: ['backend', 'flutter', 'notion'],
+        confidence: 'medium',
+      }),
+    );
+    expect(result.evidenceReview).toEqual(expect.objectContaining({
+      route: 'need_multi_source_evidence',
+      requestedSources: ['backend', 'flutter', 'notion'],
     }));
   });
 
@@ -335,7 +478,7 @@ describe('GeminiDraftGenerator', () => {
     expect(prompt).toContain('[token]');
   });
 
-  it('should fall back to manual escalation when route JSON is malformed', async () => {
+  it('should cross-check evidence when route JSON is malformed', async () => {
     // Arrange
     const contextProvider = {
       findRelevantContext: vi.fn().mockResolvedValue([]),
@@ -369,9 +512,16 @@ describe('GeminiDraftGenerator', () => {
     const result = await target.generateDraft(baseInquiry);
 
     // Assert
+    expect(internalEvidenceProvider.findEvidence).toHaveBeenCalledWith(
+      baseInquiry,
+      expect.objectContaining({
+        route: 'need_multi_source_evidence',
+        requestedSources: ['backend', 'flutter', 'notion'],
+      }),
+    );
     expect(result.evidenceReview).toEqual(
       expect.objectContaining({
-        route: 'escalate_manual',
+        route: 'need_multi_source_evidence',
         confidence: 'low',
         conflicts: ['AI route decision could not be parsed.'],
       }),
@@ -413,18 +563,84 @@ describe('GeminiDraftGenerator', () => {
 
     // Assert
     expect(fakeClient.models.generateContent).toHaveBeenCalledTimes(2);
-    expect(internalEvidenceProvider.findEvidence).not.toHaveBeenCalled();
+    expect(internalEvidenceProvider.findEvidence).toHaveBeenCalledWith(
+      baseInquiry,
+      expect.objectContaining({
+        route: 'need_multi_source_evidence',
+        requestedSources: ['backend', 'flutter', 'notion'],
+      }),
+    );
     expect(result.subject).toBe('확인 후 안내드리겠습니다');
     expect(result.evidenceReview).toEqual(
       expect.objectContaining({
-        route: 'escalate_manual',
+        route: 'need_multi_source_evidence',
         confidence: 'low',
         conflicts: [expect.stringContaining('route quota exceeded')],
       }),
     );
   });
 
-  it('should not attach an evidence review for answer-from-rag routes', async () => {
+  it('should cross-check profile restoration questions through all internal sources', async () => {
+    // Arrange
+    const inquiry = {
+      ...baseInquiry,
+      message: '프로필 사진 변경 후 이전 사진 복구가 가능한가요?',
+    };
+    const contextProvider = {
+      findRelevantContext: vi.fn().mockResolvedValue([]),
+    };
+    const internalEvidenceProvider = {
+      findEvidence: vi.fn().mockResolvedValue([]),
+    };
+    const fakeClient = {
+      models: {
+        generateContent: vi.fn()
+          .mockResolvedValueOnce({
+            text: JSON.stringify({
+              route: 'need_notion_policy',
+              reason: 'Profile image restoration policy should be checked.',
+              requestedSources: ['notion'],
+              confidence: 'medium',
+              needsCheck: 'Confirm whether profile image restoration is supported.',
+              conflicts: [],
+            }),
+          })
+          .mockResolvedValueOnce({
+            text: JSON.stringify({
+              summary: '프로필 사진 복구 문의',
+              subject: '프로필 사진 복구 관련 안내',
+              body: '담당자가 정책과 구현을 확인한 뒤 안내드리겠습니다.',
+              missingInformation: [],
+            }),
+          }),
+      },
+    };
+    const target = new GeminiDraftGenerator(
+      'gemini-key',
+      'gemini-2.5-flash-lite',
+      contextProvider as never,
+      fakeClient as never,
+      { internalEvidenceProvider: internalEvidenceProvider as never },
+    );
+
+    // Act
+    const result = await target.generateDraft(inquiry);
+
+    // Assert
+    expect(internalEvidenceProvider.findEvidence).toHaveBeenCalledWith(
+      inquiry,
+      expect.objectContaining({
+        route: 'need_multi_source_evidence',
+        requestedSources: ['backend', 'flutter', 'notion'],
+      }),
+    );
+    expect(result.evidenceReview).toEqual(expect.objectContaining({
+      route: 'need_multi_source_evidence',
+      requestedSources: ['backend', 'flutter', 'notion'],
+    }));
+  });
+
+  it('should attach an evidence review for answer-from-rag routes', async () => {
     // Arrange
     const contextProvider = {
       findRelevantContext: vi.fn().mockResolvedValue(['FAQ: 앱 설정에서 알림을 바꿀 수 있습니다.']),
@@ -467,7 +683,16 @@ describe('GeminiDraftGenerator', () => {
     const result = await target.generateDraft(baseInquiry);
 
     // Assert
-    expect(internalEvidenceProvider.findEvidence).not.toHaveBeenCalled();
-    expect(result.evidenceReview).toBeUndefined();
+    expect(internalEvidenceProvider.findEvidence).toHaveBeenCalledWith(
+      baseInquiry,
+      expect.objectContaining({
+        route: 'need_multi_source_evidence',
+        requestedSources: ['backend', 'flutter', 'notion'],
+      }),
+    );
+    expect(result.evidenceReview).toEqual(expect.objectContaining({
+      route: 'need_multi_source_evidence',
+      requestedSources: ['backend', 'flutter', 'notion'],
+    }));
   });
 });
