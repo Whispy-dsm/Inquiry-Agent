@@ -10,8 +10,11 @@ import type { GmailClient } from '../email/gmailClient.js';
 import type { GoogleSheetsClient } from '../sheets/googleSheetsClient.js';
 import type { InquiryLock } from '../workflow/inquiryLock.js';
 import {
+  clearCachedInquiryDetails,
   clearCachedEvidenceReview,
+  getCachedInquiryDetails,
   getCachedEvidenceReview,
+  replaceInquiryDetailsSection,
   replaceEvidenceReviewSection,
 } from './renderInquiryMessage.js';
 
@@ -53,6 +56,11 @@ export async function handleReviewButton(
 
   if (action === 'evidenceOpen' || action === 'evidenceClose') {
     await handleEvidenceToggle(interaction, inquiryId, action === 'evidenceOpen');
+    return;
+  }
+
+  if (action === 'inquiryOpen' || action === 'inquiryClose') {
+    await handleInquiryToggle(interaction, inquiryId, action === 'inquiryOpen');
     return;
   }
 
@@ -129,6 +137,7 @@ export async function handleReviewButton(
         handled_at: new Date().toISOString(),
       });
       await recordReviewFeedback(deps, review, 'rejected');
+      clearCachedInquiryDetails(inquiryId);
       clearCachedEvidenceReview(inquiryId);
 
       await interaction.editReply({
@@ -178,6 +187,7 @@ export async function handleReviewButton(
           gmail_message_id: sent.messageId,
         });
         await recordReviewFeedback(deps, review, 'approved');
+        clearCachedInquiryDetails(inquiryId);
         clearCachedEvidenceReview(inquiryId);
       } catch {
         await interaction.followUp({
@@ -314,6 +324,7 @@ export async function handleEditSubmitSend(
     }
 
     if (shouldUpdateReviewMessage) {
+      clearCachedInquiryDetails(edit.inquiryId);
       clearCachedEvidenceReview(edit.inquiryId);
       await interaction.editReply({
         content: `${interaction.message.content}\n\n처리 결과: Sent after edit by <@${edit.handledBy}>`,
@@ -326,6 +337,29 @@ export async function handleEditSubmitSend(
   } finally {
     deps.lock.release(edit.inquiryId, edit.handledBy);
   }
+}
+
+async function handleInquiryToggle(
+  interaction: ButtonInteraction,
+  inquiryId: string,
+  expanded: boolean,
+): Promise<void> {
+  const inquiry = getCachedInquiryDetails(inquiryId);
+
+  if (!inquiry) {
+    await interaction.reply({
+      content: '문의 원문 정보를 다시 불러올 수 없습니다. 새 검토 메시지를 생성한 뒤 다시 시도해 주세요.',
+      ephemeral: true,
+    });
+    return;
+  }
+
+  await interaction.update(replaceInquiryDetailsSection(
+    interaction.message.content,
+    inquiryId,
+    inquiry,
+    expanded,
+  ));
 }
 
 async function handleEvidenceToggle(

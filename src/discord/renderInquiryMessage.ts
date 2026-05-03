@@ -6,14 +6,14 @@ import type { Inquiry, InquiryDraft } from '../domain/inquiry.js';
 export function renderInquiryMessage(input: {
   inquiry: Inquiry;
   draft: InquiryDraft;
+  inquiryExpanded?: boolean;
   evidenceExpanded?: boolean;
 }) {
-  const { inquiry, draft, evidenceExpanded = false } = input;
+  const { inquiry, draft, inquiryExpanded = false, evidenceExpanded = false } = input;
   const content = [
     `새 문의 검토 요청: ${inquiry.inquiryId}`,
     `유형: ${inquiry.type}`,
     `고객: ${inquiry.name} <${inquiry.email}>`,
-    ...(inquiry.deviceInfo ? [`단말기: ${inquiry.deviceInfo}`] : []),
     '',
     `요약: ${draft.summary}`,
     '',
@@ -22,9 +22,15 @@ export function renderInquiryMessage(input: {
     draft.body,
     '```',
   ];
+  rememberInquiryDetails(inquiry);
   rememberEvidenceReview(inquiry.inquiryId, draft.evidenceReview);
 
+  const inquiryDetails = renderInquiryDetails(inquiry, inquiryExpanded);
   const evidenceReview = renderEvidenceReview(draft.evidenceReview, evidenceExpanded);
+
+  if (inquiryDetails) {
+    content.push('', inquiryDetails);
+  }
 
   if (evidenceReview) {
     content.push('', evidenceReview);
@@ -32,7 +38,13 @@ export function renderInquiryMessage(input: {
 
   return {
     content: content.join('\n'),
-    components: renderReviewComponents(inquiry.inquiryId, Boolean(draft.evidenceReview), evidenceExpanded),
+    components: renderReviewComponents({
+      inquiryId: inquiry.inquiryId,
+      hasInquiryDetails: true,
+      inquiryExpanded,
+      hasEvidenceReview: Boolean(draft.evidenceReview),
+      evidenceExpanded,
+    }),
   };
 }
 
@@ -40,14 +52,23 @@ export function renderInquiryMessage(input: {
  * 문의 검토 메시지 하단에 붙는 액션 버튼 행을 만듭니다.
  *
  * @remarks
- * 내부 근거가 있는 메시지는 현재 펼침 상태에 맞춰 `근거 열기` 또는 `근거 닫기` 버튼을 함께 표시합니다.
- * 승인, 수정, 거절 버튼은 근거 토글 여부와 무관하게 같은 행에 유지됩니다.
+ * 원문과 내부 근거가 있는 메시지는 현재 펼침 상태에 맞춰 열기/닫기 버튼을 함께 표시합니다.
+ * 승인, 수정, 거절 버튼은 토글 여부와 무관하게 같은 행에 유지됩니다.
  */
-export function renderReviewComponents(
-  inquiryId: string,
-  hasEvidenceReview: boolean,
-  evidenceExpanded: boolean,
-): Array<ActionRowBuilder<ButtonBuilder>> {
+export function renderReviewComponents(input: {
+  inquiryId: string;
+  hasInquiryDetails: boolean;
+  inquiryExpanded: boolean;
+  hasEvidenceReview: boolean;
+  evidenceExpanded: boolean;
+}): Array<ActionRowBuilder<ButtonBuilder>> {
+  const {
+    inquiryId,
+    hasInquiryDetails,
+    inquiryExpanded,
+    hasEvidenceReview,
+    evidenceExpanded,
+  } = input;
   const buttons = [
     new ButtonBuilder()
       .setCustomId(`approve:${inquiryId}`)
@@ -62,6 +83,15 @@ export function renderReviewComponents(
       .setLabel('Reject')
       .setStyle(ButtonStyle.Danger),
   ];
+
+  if (hasInquiryDetails) {
+    buttons.push(
+      new ButtonBuilder()
+        .setCustomId(`${inquiryExpanded ? 'inquiryClose' : 'inquiryOpen'}:${inquiryId}`)
+        .setLabel(inquiryExpanded ? '문의 닫기' : '문의 열기')
+        .setStyle(ButtonStyle.Secondary),
+    );
+  }
 
   if (hasEvidenceReview) {
     buttons.push(
@@ -78,6 +108,38 @@ export function renderReviewComponents(
 }
 
 /**
+ * 기존 Discord 메시지에서 고객 문의 원문 섹션만 접힘 또는 펼침 상태로 교체합니다.
+ *
+ * @remarks
+ * 원문 토글은 내부 근거 토글과 독립적으로 동작합니다. 이미 열린 내부 근거 섹션이 있으면 그 앞에
+ * 문의 원문을 삽입해 검토자가 고객 원문과 근거를 순서대로 확인할 수 있게 합니다.
+ */
+export function replaceInquiryDetailsSection(
+  content: string,
+  inquiryId: string,
+  inquiry: CachedInquiryDetails,
+  inquiryExpanded: boolean,
+): ReturnType<typeof renderInquiryMessage> {
+  const contentWithoutInquiry = stripInquiryDetailsSection(content);
+  const evidenceExpanded = isEvidenceReviewExpanded(contentWithoutInquiry);
+  const hasEvidenceReview = hasEvidenceReviewSection(contentWithoutInquiry);
+  const nextContent = inquiryExpanded
+    ? insertBeforeEvidenceReview(contentWithoutInquiry, renderInquiryDetails(inquiry, true))
+    : contentWithoutInquiry;
+
+  return {
+    content: nextContent,
+    components: renderReviewComponents({
+      inquiryId,
+      hasInquiryDetails: true,
+      inquiryExpanded,
+      hasEvidenceReview,
+      evidenceExpanded,
+    }),
+  };
+}
+
+/**
  * 기존 Discord 메시지에서 내부 근거 검토 섹션만 접힘 또는 펼침 상태로 교체합니다.
  *
  * @remarks
@@ -90,13 +152,32 @@ export function replaceEvidenceReviewSection(
   review: EvidenceReview,
   evidenceExpanded: boolean,
 ): ReturnType<typeof renderInquiryMessage> {
+  const inquiryExpanded = hasInquiryDetailsSection(content);
+
   return {
     content: [
       stripEvidenceReviewSection(content),
       renderEvidenceReview(review, evidenceExpanded),
     ].filter(Boolean).join('\n\n'),
-    components: renderReviewComponents(inquiryId, true, evidenceExpanded),
+    components: renderReviewComponents({
+      inquiryId,
+      hasInquiryDetails: true,
+      inquiryExpanded,
+      hasEvidenceReview: true,
+      evidenceExpanded,
+    }),
   };
+}
+
+/**
+ * 현재 워커 프로세스가 마지막으로 렌더링한 문의별 고객 원문 정보를 반환합니다.
+ *
+ * @remarks
+ * 원문 토글용 메모리 캐시입니다. 영구 저장소가 아니므로 워커 재시작 뒤 기존 메시지의 원문 토글은
+ * 다시 열 수 없습니다.
+ */
+export function getCachedInquiryDetails(inquiryId: string): CachedInquiryDetails | undefined {
+  return inquiryDetailsCache.get(inquiryId);
 }
 
 /**
@@ -118,6 +199,25 @@ export function getCachedEvidenceReview(inquiryId: string): EvidenceReview | und
  */
 export function clearCachedEvidenceReview(inquiryId: string): void {
   evidenceReviewCache.delete(inquiryId);
+}
+
+/** 최종 처리된 문의의 원문 토글 캐시를 제거합니다. */
+export function clearCachedInquiryDetails(inquiryId: string): void {
+  inquiryDetailsCache.delete(inquiryId);
+}
+
+function renderInquiryDetails(inquiry: CachedInquiryDetails, expanded: boolean): string {
+  if (!expanded) {
+    return '';
+  }
+
+  return [
+    inquiryDetailsTitle,
+    inquiry.deviceInfo ? `단말기: ${singleLine(inquiry.deviceInfo, 180)}` : undefined,
+    '```',
+    truncateMultilineForCodeBlock(inquiry.message, 1500),
+    '```',
+  ].filter((line): line is string => typeof line === 'string').join('\n');
 }
 
 function renderEvidenceReview(review: EvidenceReview | undefined, expanded: boolean): string {
@@ -189,9 +289,29 @@ function formatScore(score: number): string {
   return score.toFixed(3);
 }
 
+type CachedInquiryDetails = Pick<Inquiry, 'inquiryId' | 'message' | 'deviceInfo'>;
+
+const inquiryDetailsTitle = '문의 원문';
 const internalEvidenceReviewTitle = '내부 근거 검토';
 const maxEvidenceReviewCacheEntries = 200;
+const inquiryDetailsCache = new Map<string, CachedInquiryDetails>();
 const evidenceReviewCache = new Map<string, EvidenceReview>();
+
+function rememberInquiryDetails(inquiry: Inquiry): void {
+  if (inquiryDetailsCache.size >= maxEvidenceReviewCacheEntries) {
+    const oldestKey = inquiryDetailsCache.keys().next().value;
+
+    if (oldestKey) {
+      inquiryDetailsCache.delete(oldestKey);
+    }
+  }
+
+  inquiryDetailsCache.set(inquiry.inquiryId, {
+    inquiryId: inquiry.inquiryId,
+    message: inquiry.message,
+    ...(inquiry.deviceInfo ? { deviceInfo: inquiry.deviceInfo } : {}),
+  });
+}
 
 function rememberEvidenceReview(inquiryId: string, review: EvidenceReview | undefined): void {
   if (!review) {
@@ -218,4 +338,52 @@ function stripEvidenceReviewSection(content: string): string {
   }
 
   return content.slice(0, sectionStart);
+}
+
+function stripInquiryDetailsSection(content: string): string {
+  const sectionStart = content.indexOf(`\n\n${inquiryDetailsTitle}\n`);
+
+  if (sectionStart < 0) {
+    return content;
+  }
+
+  const sectionEnd = content.indexOf(`\n\n${internalEvidenceReviewTitle}\n`, sectionStart + 1);
+
+  if (sectionEnd < 0) {
+    return content.slice(0, sectionStart);
+  }
+
+  return `${content.slice(0, sectionStart)}${content.slice(sectionEnd)}`;
+}
+
+function insertBeforeEvidenceReview(content: string, section: string): string {
+  const evidenceStart = content.indexOf(`\n\n${internalEvidenceReviewTitle}\n`);
+
+  if (evidenceStart < 0) {
+    return [content, section].filter(Boolean).join('\n\n');
+  }
+
+  return `${content.slice(0, evidenceStart)}\n\n${section}${content.slice(evidenceStart)}`;
+}
+
+function hasInquiryDetailsSection(content: string): boolean {
+  return content.includes(`\n\n${inquiryDetailsTitle}\n`);
+}
+
+function hasEvidenceReviewSection(content: string): boolean {
+  return content.includes(`\n\n${internalEvidenceReviewTitle}\n`);
+}
+
+function isEvidenceReviewExpanded(content: string): boolean {
+  return /\nEvidence:\n- /.test(content);
+}
+
+function truncateMultilineForCodeBlock(value: string, maxLength: number): string {
+  const sanitized = value.replace(/```/g, '`​``').trim();
+
+  if (sanitized.length <= maxLength) {
+    return sanitized;
+  }
+
+  return `${sanitized.slice(0, maxLength - 3).trimEnd()}...`;
 }
