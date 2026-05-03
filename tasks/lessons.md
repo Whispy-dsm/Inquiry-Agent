@@ -123,3 +123,5 @@
 - Rule: Do not add feature-specific inquiry keywords unless explicitly accepted; use generic safe query expansion from route explanations and small independent GitHub queries first.
 - Correction: The user reported that a GitHub issue body was garbled after creation.
 - Rule: Do not pipe Korean GitHub issue bodies through PowerShell stdin; pass the body as a Unicode argument or another verified UTF-8-safe path, then re-read the issue body before claiming success.
+- Correction: The user showed inq_19 still returned empty Backend/Flutter evidence because route prose like "The user is asking" and "history/storage" was treated as hard intent terms.
+- Rule: Hard intent terms should come from the customer inquiry text, while route explanations should be ranked as narrative search terms so generic prose cannot override feature-specific evidence words.

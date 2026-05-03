@@ -1218,3 +1218,51 @@ Related issue: #16
   - `git diff --check` -> passed with CRLF warnings only.
   - `npm run lint` -> blocked by existing missing ESLint v9 `eslint.config.*`.
 - Remaining risks: when the route model fails and no focused intent rule matches the raw inquiry, the system still has no semantic translator; the strengthened draft prompt keeps those cases from being treated as confirmed behavior.
+
+## Route Narrative Code Search Refinement
+
+### Plan
+
+- [x] Reproduce why inq_19 still returns empty Backend/Flutter evidence when the route narrative uses natural-language terms such as profile photo and image storage.
+- [x] Improve generic route narrative search ordering without adding a profile-only fallback.
+- [x] Add regression tests for natural-language route narratives that should still find profile image implementation code.
+- [x] Re-run focused tests, full tests, typecheck, build, lint attempt, and diff hygiene.
+
+### Review
+
+- Changed files: `src/ai/internalEvidence.ts`, `tests/ai/internalEvidence.test.ts`, `tasks/todo.md`, `tasks/lessons.md`.
+- Root cause: hard intent extraction scanned the route explanation, so generic route prose such as "The user is asking" and explanatory words such as history/storage could override the feature-specific narrative terms needed for code search.
+- Simplifications made: kept profile-specific fallbacks removed, limited hard intent extraction to the customer inquiry text, ranked route narrative terms by repeated implementation relevance, and expanded the narrative search attempts from three to six safe terms.
+- Verification:
+  - `npm run test -- tests/ai/internalEvidence.test.ts` -> 1 file / 24 tests passed.
+  - `npm run test -- tests/ai/internalEvidence.test.ts tests/ai/geminiDraftGenerator.test.ts tests/ai/geminiDraftRuntime.test.ts` -> 3 files / 45 tests passed.
+  - `npm run test` -> 18 files / 121 tests passed.
+  - `npm run typecheck` -> passed.
+  - `npm run build` -> passed.
+  - `git diff --check` -> passed with CRLF warnings only.
+  - `npm run lint` -> blocked by existing missing ESLint v9 `eslint.config.*`.
+- Remaining risks: route text still needs to contain at least one meaningful feature/implementation word; if the route model emits only generic prose, the draft should continue to stay non-committal.
+
+## Discord Reject And Evidence Toggle Rendering
+
+### Plan
+
+- [x] Reproduce why a rejected review card can keep buttons visible after the sheet is marked handled.
+- [x] Make final review-card updates fit Discord content limits while always removing buttons.
+- [x] Ensure the internal evidence expanded view includes the full evidence item list instead of an arbitrary first-six cap.
+- [x] Add regression tests for reject button removal on long messages and full expanded evidence rendering.
+- [x] Re-run focused Discord tests, full tests, typecheck, build, lint attempt, and diff hygiene.
+
+### Review
+
+- Changed files: `src/discord/interactionHandlers.ts`, `src/discord/renderInquiryMessage.ts`, `tests/discord/interactionHandlers.test.ts`, `tests/discord/renderInquiryMessage.test.ts`, `tasks/todo.md`.
+- Root cause: final reject/approve message updates appended processing results to the full current Discord message, so an expanded evidence card could exceed the 2000-character message limit before the button-removal edit landed.
+- Simplifications made: centralized final processing-result rendering with a Discord content-limit guard, kept `components: []` on terminal updates, and removed the arbitrary first-six evidence cap from the expanded internal evidence renderer.
+- Verification:
+  - `npm run test -- tests/discord/renderInquiryMessage.test.ts tests/discord/interactionHandlers.test.ts` -> 2 files / 18 tests passed.
+  - `npm run test` -> 18 files / 123 tests passed.
+  - `npm run typecheck` -> passed.
+  - `npm run build` -> passed.
+  - `git diff --check` -> passed with CRLF warnings only.
+  - `npm run lint` -> blocked by existing missing ESLint v9 `eslint.config.*`.
+- Remaining risks: Discord still has a hard 2000-character content limit; very large expanded evidence cards may be shortened on final processing, but the terminal result line and button removal are preserved.
