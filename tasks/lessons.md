@@ -125,3 +125,5 @@
 - Rule: Do not pipe Korean GitHub issue bodies through PowerShell stdin; pass the body as a Unicode argument or another verified UTF-8-safe path, then re-read the issue body before claiming success.
 - Correction: The user showed inq_19 still returned empty Backend/Flutter evidence because route prose like "The user is asking" and "history/storage" was treated as hard intent terms.
 - Rule: Hard intent terms should come from the customer inquiry text, while route explanations should be ranked as narrative search terms so generic prose cannot override feature-specific evidence words.
+- Correction: The user showed inq_21 promoted unrelated Notion music/profile content and backend `R2Config.java` because `profile` matched both product profile-photo language and framework/environment profile code.
+- Rule: Treat `profile` as a weak relevance term; profile-photo evidence must also match a concrete asset/action term such as image, photo, upload, or a long implementation symbol.

@@ -1290,3 +1290,27 @@ Related issue: #16
   - `git diff --check` -> passed with CRLF warnings only.
   - `npm run lint` -> blocked by existing missing ESLint v9 `eslint.config.*`.
 - Remaining risks: expanded evidence may omit lower-ranked items to fit Discord's hard limit; reviewers can still regenerate or inspect source links if deeper evidence is needed.
+
+## Profile Evidence False Positive Hardening
+
+### Plan
+
+- [x] Reproduce why inq_21 still promoted unrelated `R2Config.java` evidence for a profile-photo restoration inquiry.
+- [x] Treat generic `profile` mentions as weak relevance signals so framework `@Profile` and broad profile settings pages are not enough.
+- [x] Keep valid profile-image implementation evidence discoverable through concrete terms such as image/photo/upload.
+- [x] Add regression tests for Spring `@Profile` storage config and generic Notion profile pages.
+- [x] Re-run focused tests, full tests, typecheck, build, lint attempt, and diff hygiene.
+
+### Review
+
+- Changed files: `src/ai/internalEvidence.ts`, `tests/ai/internalEvidence.test.ts`, `tasks/todo.md`, `tasks/lessons.md`.
+- Root cause: `profile` was still treated as a strong feature term, so framework/environment profile code such as Spring `@Profile` and broad profile-setting pages could pass the relevance gate for profile-photo restoration inquiries.
+- Simplifications made: moved `profile`/`profiles`/`updated` into weak generic relevance terms and kept a long-symbol fallback for real implementation symbols, so concrete asset/action terms must accompany generic profile language.
+- Verification:
+  - `npm run test -- tests/ai/internalEvidence.test.ts` -> 1 file / 28 tests passed.
+  - `npm run test` -> 18 files / 128 tests passed.
+  - `npm run typecheck` -> passed.
+  - `npm run build` -> passed.
+  - `git diff --check` -> passed with CRLF warnings only.
+  - `npm run lint` -> blocked by existing missing ESLint v9 `eslint.config.*`.
+- Remaining risks: live GitHub and Notion search can still return unrelated candidates, but candidates that only match weak profile/generic terms should now be downgraded to empty instead of shown as found evidence.
