@@ -1266,3 +1266,27 @@ Related issue: #16
   - `git diff --check` -> passed with CRLF warnings only.
   - `npm run lint` -> blocked by existing missing ESLint v9 `eslint.config.*`.
 - Remaining risks: Discord still has a hard 2000-character content limit; very large expanded evidence cards may be shortened on final processing, but the terminal result line and button removal are preserved.
+
+## Discord Evidence Length And Relevance Hardening
+
+### Plan
+
+- [x] Reproduce the Discord interaction failure where expanded internal evidence exceeds the 2000-character update limit.
+- [x] Keep expanded evidence toggle content within Discord limits without dropping the required Route, Reason, Needs check, Conflicts, and Evidence sections.
+- [x] Tighten evidence relevance so generic route words such as previous/storage/history do not promote unrelated sleep statistics or build files.
+- [x] Add regression tests for long expanded evidence rendering and unrelated GitHub/Notion evidence rejection.
+- [x] Re-run focused tests, full tests, typecheck, build, lint attempt, and diff hygiene.
+
+### Review
+
+- Changed files: `src/ai/internalEvidence.ts`, `src/discord/renderInquiryMessage.ts`, `tests/ai/internalEvidence.test.ts`, `tests/discord/renderInquiryMessage.test.ts`, `tasks/todo.md`.
+- Root cause: expanded evidence rendering could exceed Discord's 2000-character interaction update limit, and relevance checks still allowed generic route words such as previous/history to promote unrelated sleep-statistics evidence.
+- Simplifications made: bounded expanded evidence content while preserving the required section headers, shortened per-item snippets, and required at least one non-generic priority narrative term plus multiple matches before non-symbol evidence is accepted.
+- Verification:
+  - `npm run test -- tests/ai/internalEvidence.test.ts tests/discord/renderInquiryMessage.test.ts tests/discord/interactionHandlers.test.ts` -> 3 files / 45 tests passed.
+  - `npm run test` -> 18 files / 126 tests passed.
+  - `npm run typecheck` -> passed.
+  - `npm run build` -> passed.
+  - `git diff --check` -> passed with CRLF warnings only.
+  - `npm run lint` -> blocked by existing missing ESLint v9 `eslint.config.*`.
+- Remaining risks: expanded evidence may omit lower-ranked items to fit Discord's hard limit; reviewers can still regenerate or inspect source links if deeper evidence is needed.
