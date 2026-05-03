@@ -1,5 +1,54 @@
 # Convention Import Todo
 
+## Internal Evidence Provider HTTP Logging
+
+### Plan
+
+- [x] Add a logger contract to internal evidence provider options.
+- [x] Pass the worker pino logger into GitHub/Notion evidence providers.
+- [x] Log GitHub search, contents API, raw fallback, and Notion HTTP failures without tokens or customer text.
+- [x] Add regression tests for logged GitHub 403 and raw fallback behavior.
+- [x] Run focused tests, full tests, typecheck, build, and diff hygiene.
+
+### Review
+
+- Changed files: `src/ai/internalEvidence.ts`, `src/worker.ts`, `tests/ai/internalEvidence.test.ts`, `tasks/todo.md`.
+- Related issue: https://github.com/Whispy-dsm/Inquiry-Agent/issues/17
+- Root cause: internal evidence providers converted recoverable HTTP failures into evidence items, `null`, or fallback behavior without receiving the worker logger, so pino never saw GitHub/Notion 403 details.
+- Simplifications made: added a tiny optional logger contract and structured provider-local logs instead of changing fetch globally or logging raw headers/bodies.
+- Verification:
+  - `npm run test -- tests/ai/internalEvidence.test.ts tests/worker.test.ts` -> 2 files / 39 tests passed.
+  - `npm run typecheck` -> passed.
+  - `npm run test` -> 18 files / 133 tests passed.
+  - `npm run build` -> passed.
+  - `git diff --check` -> passed with CRLF warnings only.
+- Remaining risks: `npm run lint` is still blocked by the existing missing ESLint v9 `eslint.config.*`; logs show sanitized query/path/status metadata, not Authorization headers or request bodies.
+
+## Internal Evidence False Positive Investigation
+
+### Plan
+
+- [x] Reproduce the live `inq_22` profile-photo restoration evidence lookup with masked API logging.
+- [x] Add regression coverage for GitHub content-validation failures that previously promoted weak `profile` matches.
+- [x] Add regression coverage for broad Notion root pages that only match generic terms.
+- [x] Patch provider relevance checks to fail closed on unvalidated weak matches.
+- [x] Run focused tests, full tests, typecheck, and build.
+
+### Review
+
+- Changed files: `src/ai/internalEvidence.ts`, `tests/ai/internalEvidence.test.ts`, `tasks/todo.md`.
+- Root cause: GitHub contents API validation was returning 403, but weak code-search matches such as framework `Profile` references were still promoted as `found`; Notion configured root pages also accumulated generic matches across unrelated blocks.
+- Simplifications made: kept the existing provider architecture, tightened relevance gates, and added raw GitHub file fallback instead of adding another retrieval layer or dependency.
+- Verification:
+  - Live masked reproduction confirmed the bad `R2Config.java`, `.coderabbit.yaml`, Flutter profile model, and broad Notion root evidence were no longer promoted after the fix; GitHub then surfaced token/rate-limit unavailability instead of false evidence.
+  - Direct raw GitHub URL checks returned 200 for representative backend and Flutter files even when contents API had returned 403 during provider reproduction.
+  - `npm run test -- tests/ai/internalEvidence.test.ts` -> 1 file / 33 tests passed.
+  - `npm run test` -> 18 files / 133 tests passed.
+  - `npm run typecheck` -> passed.
+  - `npm run build` -> passed.
+  - `git diff --check` -> passed with CRLF warnings only.
+- Remaining risks: `npm run lint` is still blocked by the existing missing ESLint v9 `eslint.config.*`; raw fallback avoids contents-read failures for public files, but GitHub code search itself can still rate-limit the token.
+
 ## Plan
 
 - [x] Inspect `C:\Users\user\Desktop\Whispy_BE` root guidance files and convention docs.

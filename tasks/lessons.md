@@ -49,6 +49,8 @@
 
 - Correction: A commit was created with a Lore-style subject but without the repository's required `<type> : <description>` subject format.
 - Rule: Before committing in this repository, read `docs/conventions/agent/git.md` and use subjects such as `ci : ...`, while keeping Lore trailers in the commit body.
+- Correction: I created an issue-linked fix commit with an English Lore-style subject and bundled task logs with behavior changes.
+- Rule: For issue work in this repository, use `type ( #issue ) : Korean description` as the first line, keep Lore trailers in the body, and split task-memory files into their own commit.
 - Correction: I merged a PR without immediately creating and pushing the required semantic version tag.
 - Rule: After merging an issue or PR scope in this repository, create the next `v{MAJOR}.{MINOR}.{PATCH}` tag on the merge commit, push it to origin, and verify the remote tag exists before reporting completion.
 - Correction: I committed behavior changes, docs, repository hygiene, and task memory together in one broad commit.
