@@ -1118,3 +1118,51 @@ Related issue: #13
   - `git diff --check` -> passed with CRLF warnings only.
   - `npm run lint` -> blocked by existing missing ESLint v9 `eslint.config.*`.
 - Remaining risks: 원문 토글도 근거 토글과 마찬가지로 워커 프로세스 메모리 캐시를 사용하므로, 워커 재시작 후 이미 올라간 메시지의 원문 토글은 다시 열 수 없습니다.
+
+## Korean Draft Summary
+
+### Plan
+
+- [x] Update draft system/prompt/schema guidance so `summary` must be Korean.
+- [x] Replace English parser fallback summary with Korean text.
+- [x] Add a post-parse guard that replaces non-Korean summaries with a Korean inquiry-type summary.
+- [x] Add focused tests for English summary normalization and prompt guidance.
+- [x] Run focused tests, typecheck, build, and diff hygiene.
+
+### Review
+
+- Changed files: `src/ai/geminiDraftGenerator.ts`, `src/ai/prompt.ts`, `tests/ai/geminiDraftGenerator.test.ts`, `tests/ai/geminiDraftRuntime.test.ts`, `tasks/lessons.md`, `tasks/todo.md`.
+- Root cause: the draft system prompt and Gemini response schema only required a customer-facing Korean body, while `summary` was described in English as a reviewer-facing summary. Parser fallback also used the English text `AI draft parsing failed`.
+- Simplifications made: added Korean-language instructions at the model boundary and a small parser-side guard that maps non-Korean summaries to a Korean inquiry-type summary, instead of adding a translation call.
+- Verification:
+  - `npm run test -- tests/ai/geminiDraftGenerator.test.ts tests/ai/geminiDraftRuntime.test.ts` -> 2 files / 17 tests passed.
+  - `npm run test` -> 18 files / 113 tests passed.
+  - `npm run typecheck` -> passed.
+  - `npm run build` -> passed.
+  - `git diff --check` -> passed with CRLF warnings only.
+  - `npm run lint` -> blocked by existing missing ESLint v9 `eslint.config.*`.
+- Remaining risks: non-Korean summaries are replaced with a generic type-based Korean summary, so a future translation step would be needed if preserving every English nuance in Korean becomes important.
+
+## Default Internal Evidence Cross Check
+
+### Plan
+
+- [x] Replace keyword-based mandatory evidence routing with a default cross-source policy when internal evidence review is enabled.
+- [x] Force internal evidence review to request Backend, Flutter, and Notion evidence even if the route model selects a narrower source.
+- [x] Preserve route conflicts and human-check notes while converting the route to `need_multi_source_evidence`.
+- [x] Add focused tests for backend-only, Notion-only, RAG-only, manual-escalation, malformed-route, route-call-failure, and profile-restoration cases.
+- [x] Run focused tests, typecheck, build, full tests, lint attempt, and diff hygiene.
+
+### Review
+
+- Changed files: `src/ai/geminiDraftGenerator.ts`, `tests/ai/geminiDraftRuntime.test.ts`, `tasks/lessons.md`, `tasks/todo.md`.
+- Root cause: internal evidence routing previously let the model narrow each inquiry to one source, so new categories such as profile-photo restoration could be routed to Notion only and skip GitHub code evidence.
+- Simplifications made: kept the existing route model as a prioritization/explanation step, but added a single deterministic cross-source guard after route parsing and route-call failure handling instead of growing keyword-specific rules.
+- Verification:
+  - `npm run test -- tests/ai/geminiDraftRuntime.test.ts tests/ai/geminiDraftGenerator.test.ts` -> 2 files / 20 tests passed.
+  - `npm run test` -> 18 files / 116 tests passed.
+  - `npm run typecheck` -> passed.
+  - `npm run build` -> passed.
+  - `git diff --check` -> passed with CRLF warnings only.
+  - `npm run lint` -> blocked by existing missing ESLint v9 `eslint.config.*`.
+- Remaining risks: cross-source lookup is intentionally broader, so Discord evidence quality still depends on provider-side relevance filtering and the collapsed evidence toggle to keep reviews readable.

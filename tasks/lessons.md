@@ -113,3 +113,7 @@
 - Rule: When only part of a troubleshooting detail is present, ask only for the missing part instead of repeating information the customer already provided.
 - Correction: The user questioned why device information was always shown at the top of Discord review cards.
 - Rule: Keep optional customer metadata near the original inquiry context unless it is essential for the collapsed review summary.
+- Correction: The user pointed out that Discord review summaries kept appearing in English.
+- Rule: Reviewer-facing draft summaries must be Korean; add both prompt/schema guidance and parser-side fallback normalization for model outputs.
+- Correction: The user rejected keyword-by-keyword evidence routing because categories such as profile restoration can still be missed.
+- Rule: When internal evidence review is enabled, cross-check Backend, Flutter, and Notion by default; the AI may explain source priority but must not reduce the checked source set.
