@@ -141,7 +141,7 @@ export async function handleReviewButton(
       clearCachedEvidenceReview(inquiryId);
 
       await interaction.editReply({
-        content: `${interaction.message.content}\n\n처리 결과: Rejected by <@${holder}>`,
+        content: withProcessingResult(interaction.message.content, `처리 결과: Rejected by <@${holder}>`),
         components: [],
       });
       return;
@@ -198,7 +198,7 @@ export async function handleReviewButton(
       }
 
       await interaction.editReply({
-        content: `${interaction.message.content}\n\n처리 결과: Sent by <@${holder}>`,
+        content: withProcessingResult(interaction.message.content, `처리 결과: Sent by <@${holder}>`),
         components: [],
       });
       return;
@@ -327,7 +327,7 @@ export async function handleEditSubmitSend(
       clearCachedInquiryDetails(edit.inquiryId);
       clearCachedEvidenceReview(edit.inquiryId);
       await interaction.editReply({
-        content: `${interaction.message.content}\n\n처리 결과: Sent after edit by <@${edit.handledBy}>`,
+        content: withProcessingResult(interaction.message.content, `처리 결과: Sent after edit by <@${edit.handledBy}>`),
         components: [],
       });
       return;
@@ -408,4 +408,20 @@ async function sendEditNotice(
   }
 
   await interaction.editReply({ content });
+}
+
+const discordMessageContentLimit = 2000;
+
+function withProcessingResult(content: string, result: string): string {
+  const suffix = `\n\n${result}`;
+
+  if (content.length + suffix.length <= discordMessageContentLimit) {
+    return `${content}${suffix}`;
+  }
+
+  const marker = '\n\n...';
+  const maxPrefixLength = discordMessageContentLimit - suffix.length - marker.length;
+  const prefix = content.slice(0, Math.max(0, maxPrefixLength)).trimEnd();
+
+  return `${prefix}${marker}${suffix}`;
 }

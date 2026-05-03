@@ -234,6 +234,53 @@ describe('handleReviewButton', () => {
     });
   });
 
+  it('should remove review buttons when rejecting a long expanded message', async () => {
+    // Arrange
+    const interaction = {
+      customId: 'reject:inq_1',
+      user: { id: 'discord_user_1' },
+      message: { content: `review message\n${'internal evidence '.repeat(150)}` },
+      reply: vi.fn(),
+      update: vi.fn(),
+      deferUpdate: vi.fn(),
+      editReply: vi.fn(),
+      followUp: vi.fn(),
+      showModal: vi.fn(),
+    };
+    const deps = {
+      lock: {
+        tryAcquire: vi.fn().mockResolvedValue({ acquired: true, holder: 'discord_user_1' }),
+        release: vi.fn(),
+      },
+      sheets: {
+        findInquiryReview: vi.fn().mockResolvedValue({
+          rowNumber: 2,
+          email: 'user@example.com',
+          draftSubject: '문의 답변드립니다',
+          draftBody: '안녕하세요.',
+          status: 'pending_review',
+        }),
+        updateManagedFields: vi.fn().mockResolvedValue(undefined),
+      },
+      gmail: {
+        sendEmail: vi.fn(),
+      },
+      fromEmail: 'support@example.com',
+      fromName: 'Support Team',
+    };
+
+    // Act
+    await handleReviewButton(interaction as never, deps as never);
+
+    // Assert
+    const payload = interaction.editReply.mock.calls[0]?.[0];
+    expect(payload).toEqual(expect.objectContaining({
+      content: expect.stringContaining('Rejected by <@discord_user_1>'),
+      components: [],
+    }));
+    expect(payload.content.length).toBeLessThanOrEqual(2000);
+  });
+
   it('should approve an inquiry, send email, and persist final fields', async () => {
     // Arrange
     const interaction = {

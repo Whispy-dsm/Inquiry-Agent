@@ -115,6 +115,35 @@ describe('renderInquiryMessage', () => {
     expect(JSON.stringify(result.components)).toContain(`evidenceClose:${baseInquiry.inquiryId}`);
   });
 
+  it('should render every internal evidence item when expanded', () => {
+    // Arrange
+    const evidence = Array.from({ length: 7 }, (_, index) => ({
+      sourceType: 'backend' as const,
+      authority: 'implementation-behavior' as const,
+      title: `backend evidence ${index + 1}`,
+      source: `src/evidence-${index + 1}.ts`,
+      snippet: `Evidence snippet ${index + 1}`,
+      status: 'found' as const,
+    }));
+
+    // Act
+    const result = renderInquiryMessage({
+      inquiry: baseInquiry,
+      draft: {
+        ...evidenceDraft,
+        evidenceReview: {
+          ...evidenceDraft.evidenceReview,
+          evidence,
+        },
+      },
+      evidenceExpanded: true,
+    });
+
+    // Assert
+    expect(result.content).toContain('src/evidence-1.ts');
+    expect(result.content).toContain('src/evidence-7.ts');
+  });
+
   it('should not render internal evidence controls when the draft has no evidence review', () => {
     // Arrange
     const draft = {

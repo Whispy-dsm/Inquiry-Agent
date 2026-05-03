@@ -237,7 +237,7 @@ function renderEvidenceReview(review: EvidenceReview | undefined, expanded: bool
     `Needs check: ${review.needsCheck}`,
     `Conflicts: ${review.conflicts.length > 0 ? review.conflicts.join(' / ') : 'none'}`,
     'Evidence:',
-    ...review.evidence.slice(0, 6).map(renderEvidenceItem),
+    ...review.evidence.map(renderEvidenceItem),
   ].join('\n');
 }
 
