@@ -117,3 +117,7 @@
 - Rule: Reviewer-facing draft summaries must be Korean; add both prompt/schema guidance and parser-side fallback normalization for model outputs.
 - Correction: The user rejected keyword-by-keyword evidence routing because categories such as profile restoration can still be missed.
 - Rule: When internal evidence review is enabled, cross-check Backend, Flutter, and Notion by default; the AI may explain source priority but must not reduce the checked source set.
+- Correction: The user showed that profile-photo restoration inquiries returned empty Backend/Flutter evidence even though both repositories contain profile-image code.
+- Rule: Evidence retrieval should prefer route narrative search terms and relevance gates over raw feature-specific fallback keywords.
+- Correction: The user pointed out that adding a profile-specific term repeats the same keyword-expansion problem for future inquiry types.
+- Rule: Do not add feature-specific inquiry keywords unless explicitly accepted; use generic safe query expansion from route explanations and small independent GitHub queries first.

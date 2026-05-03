@@ -1166,3 +1166,55 @@ Related issue: #13
   - `git diff --check` -> passed with CRLF warnings only.
   - `npm run lint` -> blocked by existing missing ESLint v9 `eslint.config.*`.
 - Remaining risks: cross-source lookup is intentionally broader, so Discord evidence quality still depends on provider-side relevance filtering and the collapsed evidence toggle to keep reviews readable.
+
+## Profile Image Evidence Retrieval
+
+Related issue: #16
+
+### Plan
+
+- [x] Reproduce why profile-photo restoration inquiries can return empty Backend/Flutter evidence.
+- [x] Cover profile-photo retrieval through generic route narrative terms, without keeping a profile-specific intent fallback.
+- [x] Ensure unrelated Notion pages are not promoted for profile-image inquiries.
+- [x] Add regression tests for Backend and Flutter profile-image code search.
+- [x] Run focused tests, full tests, typecheck, build, lint attempt, and diff hygiene.
+
+### Review
+
+- Changed files: `src/ai/internalEvidence.ts`, `src/ai/geminiDraftGenerator.ts`, `tests/ai/internalEvidence.test.ts`, `tests/ai/geminiDraftGenerator.test.ts`, `tasks/todo.md`, `tasks/lessons.md`.
+- Root cause: evidence retrieval depended too much on hardcoded safe intent categories, so a profile-photo restoration inquiry could fall back to broad auth/login/account terms and miss existing profile-image code.
+- Simplifications made: removed the profile-specific intent fallback, used sanitized route narrative terms as the generic search and relevance gate, and strengthened the draft prompt so low-confidence or empty implementation evidence cannot be treated as confirmed behavior.
+- Verification:
+  - `npm run test -- tests/ai/internalEvidence.test.ts tests/ai/geminiDraftGenerator.test.ts tests/ai/geminiDraftRuntime.test.ts` -> 3 files / 44 tests passed.
+  - `npm run test` -> 18 files / 121 tests passed.
+  - `npm run typecheck` -> passed.
+  - `npm run build` -> passed.
+  - `git diff --check` -> passed with CRLF warnings only.
+  - `npm run lint` -> blocked by existing missing ESLint v9 `eslint.config.*`.
+- Remaining risks: GitHub live search still depends on GitHub code search indexing, token availability, and route text quality; if the route model fails before producing useful feature terms, the draft must remain low-confidence instead of confirming behavior.
+
+## Generic Evidence Query Expansion
+
+Related issue: #16
+
+### Plan
+
+- [x] Replace profile-only retrieval improvement with a generic safe query expansion path.
+- [x] Use route reason and needs-check text as sanitized search terms when focused intent rules do not cover a new inquiry type.
+- [x] Avoid over-constrained GitHub searches that combine too many unrelated generic source terms into one query.
+- [x] Add regression tests showing a new unsupported inquiry category can search by route narrative terms without adding a new keyword rule.
+- [x] Re-run focused tests, full tests, typecheck, build, lint attempt, and diff hygiene.
+
+### Review
+
+- Changed files: `src/ai/internalEvidence.ts`, `tests/ai/internalEvidence.test.ts`, `tasks/todo.md`, `tasks/lessons.md`.
+- Root cause: adding only `profileimageurl` fixed the observed profile-photo case but kept the same structural weakness for the next feature name that has no hardcoded intent rule.
+- Simplifications made: reused the existing route decision text and safe-token filters to build small narrative search queries, then used the same narrative terms as a relevance gate so unrelated Notion pages are not promoted by generic words like `feature`.
+- Verification:
+  - `npm run test -- tests/ai/internalEvidence.test.ts tests/ai/geminiDraftGenerator.test.ts tests/ai/geminiDraftRuntime.test.ts` -> 3 files / 45 tests passed.
+  - `npm run test` -> 18 files / 121 tests passed.
+  - `npm run typecheck` -> passed.
+  - `npm run build` -> passed.
+  - `git diff --check` -> passed with CRLF warnings only.
+  - `npm run lint` -> blocked by existing missing ESLint v9 `eslint.config.*`.
+- Remaining risks: when the route model fails and no focused intent rule matches the raw inquiry, the system still has no semantic translator; the strengthened draft prompt keeps those cases from being treated as confirmed behavior.
