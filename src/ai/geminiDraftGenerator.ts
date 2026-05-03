@@ -255,6 +255,7 @@ export function buildDraftPrompt(inquiry: Inquiry, context: string[], evidenceRe
       '- Write summary, subject, body, and missingInformation in Korean.',
       '- Do not ask again for device model or OS version if that detail is already present in Provided Device Info.',
       '- If Provided Device Info contains only part of the device details, ask only for the missing detail that is needed to investigate.',
+      '- If the internal evidence section is low confidence, has route-call failure conflicts, or has only empty/unavailable implementation evidence, do not state product behavior as confirmed; say a reviewer will verify it.',
       '- Put still-missing facts in missingInformation and mention them in the customer-facing body only when they are necessary.',
     ].join('\n'),
     'Return a JSON object with Korean summary, subject, body, and missingInformation.',

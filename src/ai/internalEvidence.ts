@@ -181,9 +181,36 @@ export class GitHubCodeSearchEvidenceSource implements EvidenceSourceProvider {
     inquiry: Inquiry,
     decision: EvidenceRouteDecision,
   ): Promise<EvidenceItem[]> {
+    const termGroups = buildExternalEvidenceTermGroups(inquiry, decision, this.sourceType);
+    const evidence: EvidenceItem[] = [];
+
+    for (const terms of termGroups) {
+      const items = await this.searchRepositoryWithTerms(repository, inquiry, decision, terms);
+      const unavailable = items.find((item) => item.status === 'unavailable');
+
+      if (unavailable) {
+        return [unavailable];
+      }
+
+      evidence.push(...items);
+
+      if (evidence.length > 0) {
+        break;
+      }
+    }
+
+    return dedupeEvidenceItems(evidence).slice(0, this.maxResults);
+  }
+
+  private async searchRepositoryWithTerms(
+    repository: GitHubRepository,
+    inquiry: Inquiry,
+    decision: EvidenceRouteDecision,
+    terms: string[],
+  ): Promise<EvidenceItem[]> {
     const query = buildGitHubSearchQuery(
       repository,
-      buildExternalEvidenceTerms(inquiry, decision, this.sourceType),
+      terms,
       this.maxQueryTerms,
     );
     const url = `${this.apiBaseUrl}/search/code?q=${encodeURIComponent(query)}&per_page=${this.maxResults}`;
@@ -248,10 +275,10 @@ export class GitHubCodeSearchEvidenceSource implements EvidenceSourceProvider {
     const fullName = item.repository?.full_name ?? 'unknown/repository';
     const source = item.html_url ?? `github:${fullName}/${item.path}`;
     const fragment = item.text_matches?.find((match) => typeof match.fragment === 'string')?.fragment;
-    const focusedTerms = buildFocusedEvidenceTerms(inquiry, decision);
+    const relevanceTerms = buildRelevanceGateTerms(inquiry, decision);
 
-    if (!item.url && focusedTerms.length > 0) {
-      const searchResultScore = scoreSearchText(`${item.path}\n${fragment ?? ''}`.toLowerCase(), focusedTerms);
+    if (!item.url && relevanceTerms.length > 0) {
+      const searchResultScore = scoreSearchText(`${item.path}\n${fragment ?? ''}`.toLowerCase(), relevanceTerms);
 
       if (searchResultScore === 0) {
         return null;
@@ -309,15 +336,15 @@ export class GitHubCodeSearchEvidenceSource implements EvidenceSourceProvider {
   ): Promise<EvidenceItem | null> {
     const terms = buildEvidenceTerms(inquiry, decision, this.sourceType);
     const symbolExtraction = await extractCodeSymbols(path, content, this.useTypeScriptCompiler);
-    const focusedTerms = buildFocusedEvidenceTerms(inquiry, decision);
-    const focusedKeywordScore = scoreSearchText(`${path}\n${content}`.toLowerCase(), focusedTerms);
-    const focusedSymbolScore = scoreSymbols(symbolExtraction.symbols, focusedTerms);
+    const relevanceTerms = buildRelevanceGateTerms(inquiry, decision);
+    const relevanceKeywordScore = scoreSearchText(`${path}\n${content}`.toLowerCase(), relevanceTerms);
+    const relevanceSymbolScore = scoreSymbols(symbolExtraction.symbols, relevanceTerms);
     const keywordScore = scoreSearchText(`${path}\n${content}`.toLowerCase(), terms);
     const symbolScore = scoreSymbols(symbolExtraction.symbols, terms);
     const score = (evidenceItem.score ?? 0) + keywordScore + symbolScore;
     const sourceContentHash = contentHash(`${this.sourceType}\n${evidenceItem.source}\n${evidenceItem.title}\n${path}\n${content}`);
 
-    if (focusedTerms.length > 0 && focusedKeywordScore === 0 && focusedSymbolScore === 0) {
+    if (relevanceTerms.length > 0 && relevanceKeywordScore === 0 && relevanceSymbolScore === 0) {
       return null;
     }
 
@@ -398,11 +425,11 @@ export class NotionApiEvidenceSource implements EvidenceSourceProvider {
     }
 
     const terms = buildEvidenceTerms(inquiry, decision, 'notion');
-    const focusedTerms = buildFocusedEvidenceTerms(inquiry, decision);
+    const relevanceTerms = buildRelevanceGateTerms(inquiry, decision);
     const safeTerms = buildExternalEvidenceTerms(inquiry, decision, 'notion').slice(0, this.maxSearchTerms);
 
     if (this.pageIds.length > 0) {
-      return this.fetchConfiguredPages(this.pageIds, terms, focusedTerms);
+      return this.fetchConfiguredPages(this.pageIds, terms, relevanceTerms);
     }
 
     const searchResults = await this.searchPages(safeTerms);
@@ -415,7 +442,7 @@ export class NotionApiEvidenceSource implements EvidenceSourceProvider {
       return [this.emptyItem('No Notion pages matched the routed policy inquiry.')];
     }
 
-    return this.fetchSearchResultPages(searchResults.items, terms, focusedTerms);
+    return this.fetchSearchResultPages(searchResults.items, terms, relevanceTerms);
   }
 
   private async searchPages(terms: string[]): Promise<{ items: NotionSearchResult[] } | { error: string }> {
@@ -439,9 +466,9 @@ export class NotionApiEvidenceSource implements EvidenceSourceProvider {
     return { items: notionSearchResults(response.payload).slice(0, this.maxResults) };
   }
 
-  private async fetchConfiguredPages(pageIds: string[], terms: string[], focusedTerms: string[]): Promise<EvidenceItem[]> {
+  private async fetchConfiguredPages(pageIds: string[], terms: string[], relevanceTerms: string[]): Promise<EvidenceItem[]> {
     const items = await Promise.all(
-      pageIds.slice(0, this.maxResults).map((pageId) => this.fetchPageEvidence({ id: pageId }, terms, focusedTerms)),
+      pageIds.slice(0, this.maxResults).map((pageId) => this.fetchPageEvidence({ id: pageId }, terms, relevanceTerms)),
     );
 
     return this.normalizeNotionEvidence(items);
@@ -450,9 +477,9 @@ export class NotionApiEvidenceSource implements EvidenceSourceProvider {
   private async fetchSearchResultPages(
     searchResults: NotionSearchResult[],
     terms: string[],
-    focusedTerms: string[],
+    relevanceTerms: string[],
   ): Promise<EvidenceItem[]> {
-    const items = await Promise.all(searchResults.map((result) => this.fetchPageEvidence(result, terms, focusedTerms)));
+    const items = await Promise.all(searchResults.map((result) => this.fetchPageEvidence(result, terms, relevanceTerms)));
 
     return this.normalizeNotionEvidence(items);
   }
@@ -470,7 +497,7 @@ export class NotionApiEvidenceSource implements EvidenceSourceProvider {
   private async fetchPageEvidence(
     page: NotionSearchResult,
     terms: string[],
-    focusedTerms: string[],
+    relevanceTerms: string[],
   ): Promise<EvidenceItem | null> {
     const pageMetadata = page.title ? page : await this.fetchPageMetadata(page.id);
     const content = await this.fetchPageContent(page.id);
@@ -495,11 +522,11 @@ export class NotionApiEvidenceSource implements EvidenceSourceProvider {
     const symbols = content.blocks.filter((block) => block.isHeading).map((block) => block.text);
     const symbolScore = scoreSymbols(symbols, terms);
     const totalScore = score + symbolScore;
-    const focusedScore = focusedTerms.length === 0
+    const focusedScore = relevanceTerms.length === 0
       ? 0
-      : scoreSearchText(text.toLowerCase(), focusedTerms) + scoreSymbols(symbols, focusedTerms);
+      : scoreSearchText(text.toLowerCase(), relevanceTerms) + scoreSymbols(symbols, relevanceTerms);
 
-    if (focusedTerms.length > 0 && focusedScore === 0) {
+    if (relevanceTerms.length > 0 && focusedScore === 0) {
       return null;
     }
 
@@ -1030,10 +1057,24 @@ function buildExternalEvidenceTerms(
   decision: EvidenceRouteDecision,
   sourceType: InternalEvidenceSourceType,
 ): string[] {
+  return buildExternalEvidenceTermGroups(inquiry, decision, sourceType)[0] ?? [];
+}
+
+function buildExternalEvidenceTermGroups(
+  inquiry: Inquiry,
+  decision: EvidenceRouteDecision,
+  sourceType: InternalEvidenceSourceType,
+): string[][] {
   const focusedTerms = buildFocusedEvidenceTerms(inquiry, decision);
 
   if (focusedTerms.length > 0) {
-    return focusedTerms;
+    return [focusedTerms];
+  }
+
+  const narrativeTerms = safeNarrativeTerms(`${decision.reason}\n${decision.needsCheck}`);
+
+  if (narrativeTerms.length > 0) {
+    return narrativeTerms.slice(0, 3).map((term) => [term]);
   }
 
   const terms = [
@@ -1041,7 +1082,7 @@ function buildExternalEvidenceTerms(
     ...safeRouteTerms(decision.route),
   ];
 
-  return uniqueEvidenceTerms(terms);
+  return [uniqueEvidenceTerms(terms)];
 }
 
 function buildFocusedEvidenceTerms(
@@ -1053,8 +1094,65 @@ function buildFocusedEvidenceTerms(
   );
 }
 
+function buildRelevanceGateTerms(inquiry: Inquiry, decision: EvidenceRouteDecision): string[] {
+  const focusedTerms = buildFocusedEvidenceTerms(inquiry, decision);
+
+  if (focusedTerms.length > 0) {
+    return focusedTerms;
+  }
+
+  return safeNarrativeTerms(`${decision.reason}\n${decision.needsCheck}`);
+}
+
 function uniqueEvidenceTerms(terms: string[]): string[] {
   return Array.from(new Set(terms.map((term) => term.toLowerCase()).filter((term) => term.length >= 2)));
+}
+
+const narrativeStopWords = new Set([
+  'a',
+  'an',
+  'and',
+  'are',
+  'behavior',
+  'check',
+  'checked',
+  'confirm',
+  'customer',
+  'customer-facing',
+  'definition',
+  'evidence',
+  'facing',
+  'feature',
+  'for',
+  'implementation',
+  'internal',
+  'must',
+  'needed',
+  'needs',
+  'notion',
+  'policy',
+  'product',
+  'review',
+  'reviewer',
+  'route',
+  'should',
+  'source',
+  'support',
+  'the',
+  'verify',
+]);
+
+function safeNarrativeTerms(text: string): string[] {
+  return uniqueEvidenceTerms(tokenize(text))
+    .filter((term) => term.length >= 3)
+    .filter((term) => term.length <= 40)
+    .filter((term) => !term.includes('/'))
+    .filter((term) => !narrativeStopWords.has(term))
+    .filter((term) => !looksSensitiveSearchTerm(term));
+}
+
+function looksSensitiveSearchTerm(term: string): boolean {
+  return /\d{4,}/.test(term) || /[a-f0-9]{16,}/i.test(term);
 }
 
 function safeSourceTerms(sourceType: InternalEvidenceSourceType): string[] {
@@ -1388,6 +1486,24 @@ function buildGitHubSearchQuery(repository: GitHubRepository, terms: string[], m
     .join(' ');
 
   return `${queryTerms} repo:${repository.owner}/${repository.repo}`.trim();
+}
+
+function dedupeEvidenceItems(items: EvidenceItem[]): EvidenceItem[] {
+  const seen = new Set<string>();
+  const result: EvidenceItem[] = [];
+
+  for (const item of items) {
+    const key = `${item.sourceType}\n${item.source}\n${item.status}`;
+
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    result.push(item);
+  }
+
+  return result;
 }
 
 function isLowSignalGitHubPath(path: string): boolean {

@@ -35,6 +35,15 @@ const notificationRouteDecision: EvidenceRouteDecision = {
   conflicts: [],
 };
 
+const profileImageRouteDecision: EvidenceRouteDecision = {
+  route: 'need_multi_source_evidence',
+  reason: 'ProfileImageUrl replacement and restoration behavior should be checked.',
+  requestedSources: ['backend', 'flutter', 'notion'],
+  confidence: 'medium',
+  needsCheck: 'Verify profileImageUrl replacement and restoration behavior.',
+  conflicts: [],
+};
+
 describe('GitHubCodeSearchEvidenceSource', () => {
   it('should convert GitHub code search results into external evidence items', async () => {
     // Arrange
@@ -371,6 +380,206 @@ describe('GitHubCodeSearchEvidenceSource', () => {
       retrievalSignals: expect.arrayContaining(['external', 'keyword', 'ast']),
     }));
   });
+
+  it('should search route narrative terms for new inquiry types without a dedicated intent rule', async () => {
+    // Arrange
+    const content = [
+      'export class ThemePaletteRepository {',
+      '  saveThemePalette() { return true; }',
+      '}',
+    ].join('\n');
+    const routeDecisionWithoutIntentRule: EvidenceRouteDecision = {
+      route: 'need_backend_evidence',
+      reason: 'ThemePalette persistence behavior should be checked.',
+      requestedSources: ['backend'],
+      confidence: 'medium',
+      needsCheck: 'Verify ThemePaletteRepository save behavior.',
+      conflicts: [],
+    };
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          items: [
+            {
+              path: 'src/theme/theme-palette.ts',
+              url: 'https://github.example/api/repos/whispy/backend/contents/src/theme/theme-palette.ts',
+              html_url: 'https://github.example/whispy/backend/blob/main/src/theme/theme-palette.ts',
+              repository: { full_name: 'whispy/backend' },
+              text_matches: [{ fragment: 'ThemePaletteRepository' }],
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          type: 'file',
+          encoding: 'base64',
+          size: Buffer.byteLength(content, 'utf8'),
+          content: Buffer.from(content, 'utf8').toString('base64'),
+        }),
+      });
+    const target = new GitHubCodeSearchEvidenceSource(
+      'backend',
+      [{ owner: 'whispy', repo: 'backend' }],
+      'implementation-behavior',
+      {
+        apiBaseUrl: 'https://github.example/api',
+        fetchFn,
+      },
+    );
+
+    // Act
+    const result = await target.findEvidence(
+      { ...baseInquiry, message: '테마 색상 설정이 저장되나요?' },
+      routeDecisionWithoutIntentRule,
+    );
+
+    // Assert
+    const url = String(fetchFn.mock.calls[0]?.[0]);
+    const query = decodeURIComponent(new URL(url).searchParams.get('q') ?? '');
+    expect(query).toContain('themepalette');
+    expect(query).toContain('repo:whispy/backend');
+    expect(query).not.toContain('auth');
+    expect(result[0]).toEqual(expect.objectContaining({
+      sourceType: 'backend',
+      status: 'found',
+      snippet: expect.stringContaining('ThemePaletteRepository'),
+    }));
+  });
+
+  it('should search backend profile image code through route narrative terms', async () => {
+    // Arrange
+    const content = [
+      'public MyProfileResponse execute(ChangeProfileRequest request) {',
+      '  User updateUser = user.changeProfile(request.name(), request.profileImageUrl(), request.gender());',
+      '  userSavePort.save(updateUser);',
+      '}',
+    ].join('\n');
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          items: [
+            {
+              path: 'src/main/java/whispy_server/whispy/domain/user/application/service/ChangeProfileService.java',
+              url: 'https://github.example/api/repos/whispy/backend/contents/src/main/java/whispy_server/whispy/domain/user/application/service/ChangeProfileService.java',
+              html_url: 'https://github.example/whispy/backend/blob/main/src/main/java/whispy_server/whispy/domain/user/application/service/ChangeProfileService.java',
+              repository: { full_name: 'whispy/backend' },
+              text_matches: [{ fragment: 'request.profileImageUrl()' }],
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          type: 'file',
+          encoding: 'base64',
+          size: Buffer.byteLength(content, 'utf8'),
+          content: Buffer.from(content, 'utf8').toString('base64'),
+        }),
+      });
+    const target = new GitHubCodeSearchEvidenceSource(
+      'backend',
+      [{ owner: 'whispy', repo: 'backend' }],
+      'implementation-behavior',
+      {
+        apiBaseUrl: 'https://github.example/api',
+        fetchFn,
+      },
+    );
+
+    // Act
+    const result = await target.findEvidence(
+      { ...baseInquiry, message: '프로필 사진을 새로 업로드했는데 이전 사진 복구가 가능한가요?' },
+      profileImageRouteDecision,
+    );
+
+    // Assert
+    const url = String(fetchFn.mock.calls[0]?.[0]);
+    const query = decodeURIComponent(new URL(url).searchParams.get('q') ?? '');
+    expect(query).toContain('profileimageurl');
+    expect(query).toContain('repo:whispy/backend');
+    expect(query).not.toContain('auth');
+    expect(result[0]).toEqual(expect.objectContaining({
+      sourceType: 'backend',
+      status: 'found',
+      source: 'https://github.example/whispy/backend/blob/main/src/main/java/whispy_server/whispy/domain/user/application/service/ChangeProfileService.java',
+      snippet: expect.stringContaining('profileImageUrl'),
+      retrievalSignals: expect.arrayContaining(['external', 'keyword']),
+    }));
+  });
+
+  it('should search flutter profile image upload and delete code through route narrative terms', async () => {
+    // Arrange
+    const content = [
+      'if (profileImageUrl.isNotEmpty) {',
+      '  await _repository.deleteProfileImageByUrl(profileImageUrl);',
+      '}',
+      'profileImageUrl = await _repository.uploadProfileImage(imageBytes: selectedImageBytes, fileName: fileName);',
+    ].join('\n');
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          items: [
+            {
+              path: 'lib/features/account/presentation/bloc/edit_profile_bloc.dart',
+              url: 'https://github.example/api/repos/whispy/flutter/contents/lib/features/account/presentation/bloc/edit_profile_bloc.dart',
+              html_url: 'https://github.example/whispy/flutter/blob/main/lib/features/account/presentation/bloc/edit_profile_bloc.dart',
+              repository: { full_name: 'whispy/flutter' },
+              text_matches: [{ fragment: 'uploadProfileImage' }],
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          type: 'file',
+          encoding: 'base64',
+          size: Buffer.byteLength(content, 'utf8'),
+          content: Buffer.from(content, 'utf8').toString('base64'),
+        }),
+      });
+    const target = new GitHubCodeSearchEvidenceSource(
+      'flutter',
+      [{ owner: 'whispy', repo: 'flutter' }],
+      'client-behavior',
+      {
+        apiBaseUrl: 'https://github.example/api',
+        fetchFn,
+      },
+    );
+
+    // Act
+    const result = await target.findEvidence(
+      { ...baseInquiry, message: '프로필 사진을 새로 업로드했는데 이전 사진 복구가 가능한가요?' },
+      profileImageRouteDecision,
+    );
+
+    // Assert
+    const url = String(fetchFn.mock.calls[0]?.[0]);
+    const query = decodeURIComponent(new URL(url).searchParams.get('q') ?? '');
+    expect(query).toContain('profileimageurl');
+    expect(query).toContain('repo:whispy/flutter');
+    expect(query).not.toContain('auth');
+    expect(result[0]).toEqual(expect.objectContaining({
+      sourceType: 'flutter',
+      status: 'found',
+      source: 'https://github.example/whispy/flutter/blob/main/lib/features/account/presentation/bloc/edit_profile_bloc.dart',
+      snippet: expect.stringContaining('uploadProfileImage'),
+      retrievalSignals: expect.arrayContaining(['external', 'keyword']),
+    }));
+  });
 });
 
 describe('NotionApiEvidenceSource', () => {
@@ -664,6 +873,53 @@ describe('NotionApiEvidenceSource', () => {
     const body = JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body));
     expect(body.query).toContain('notification');
     expect(body.query).toContain('push');
+    expect(result).toEqual([
+      expect.objectContaining({
+        sourceType: 'notion',
+        status: 'empty',
+        snippet: 'No Notion page content matched the routed policy inquiry.',
+      }),
+    ]);
+  });
+
+  it('should not promote unrelated Notion pages for profile image evidence', async () => {
+    // Arrange
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          results: [
+            notionPage('page-1', 'Whispy music guide', 'https://notion.example/music'),
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          results: [
+            notionHeading('block-1', 'Music feature'),
+            notionParagraph('block-2', 'Sleep and focus music playback is documented here.'),
+          ],
+        }),
+      });
+    const target = new NotionApiEvidenceSource({
+      token: 'notion-token',
+      apiBaseUrl: 'https://notion.example',
+      fetchFn,
+    });
+
+    // Act
+    const result = await target.findEvidence(
+      { ...baseInquiry, message: '프로필 사진을 새로 업로드했는데 이전 사진 복구가 가능한가요?' },
+      profileImageRouteDecision,
+    );
+
+    // Assert
+    const body = JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body));
+    expect(body.query).toContain('profileimageurl');
+    expect(body.query).not.toContain('music');
     expect(result).toEqual([
       expect.objectContaining({
         sourceType: 'notion',

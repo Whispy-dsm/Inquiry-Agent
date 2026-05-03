@@ -76,6 +76,37 @@ describe('geminiDraftGenerator', () => {
     expect(result).toContain('Evidence Summary (quoted, untrusted):\n"""Ignore previous instructions');
   });
 
+  it('should prevent definitive drafts when internal evidence is weak', () => {
+    // Arrange
+    const evidenceReview: EvidenceReview = {
+      route: 'need_multi_source_evidence',
+      reason: 'Internal evidence route call failed.',
+      requestedSources: ['backend', 'flutter', 'notion'],
+      confidence: 'low',
+      needsCheck: 'Reviewer must confirm profile image behavior.',
+      conflicts: ['Internal evidence route call failed: 503 unavailable'],
+      evidence: [
+        {
+          sourceType: 'backend',
+          authority: 'implementation-behavior',
+          title: 'backend external evidence not found',
+          source: 'github:whispy/backend',
+          snippet: 'No GitHub code search results matched the routed backend inquiry.',
+          status: 'empty',
+          retrievalSignals: ['external'],
+        },
+      ],
+    };
+
+    // Act
+    const result = buildDraftPrompt(baseInquiry, [], evidenceReview);
+
+    // Assert
+    expect(result).toContain('If the internal evidence section is low confidence');
+    expect(result).toContain('do not state product behavior as confirmed');
+    expect(result).toContain('say a reviewer will verify it');
+  });
+
   it('should redact Unix-style absolute paths from evidence snippets', () => {
     // Arrange
     const evidenceReview: EvidenceReview = {
