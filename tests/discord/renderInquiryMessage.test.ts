@@ -144,6 +144,44 @@ describe('renderInquiryMessage', () => {
     expect(result.content).toContain('src/evidence-7.ts');
   });
 
+  it('should keep expanded internal evidence under the Discord content limit', () => {
+    // Arrange
+    const evidence = Array.from({ length: 12 }, (_, index) => ({
+      sourceType: 'backend' as const,
+      authority: 'implementation-behavior' as const,
+      title: `backend evidence ${index + 1}`,
+      source: `https://github.example/Whispy/very/long/path/evidence-${index + 1}.ts`,
+      snippet: `Evidence snippet ${index + 1} ${'details '.repeat(80)}`,
+      status: 'found' as const,
+      retrievalSignals: ['external' as const, 'keyword' as const],
+      score: 1,
+    }));
+
+    // Act
+    const result = renderInquiryMessage({
+      inquiry: baseInquiry,
+      draft: {
+        ...evidenceDraft,
+        evidenceReview: {
+          ...evidenceDraft.evidenceReview,
+          reason: `${evidenceDraft.evidenceReview.reason} ${'reason '.repeat(80)}`,
+          needsCheck: `${evidenceDraft.evidenceReview.needsCheck} ${'needs '.repeat(80)}`,
+          evidence,
+        },
+      },
+      evidenceExpanded: true,
+    });
+
+    // Assert
+    expect(result.content).toContain('Route: need_multi_source_evidence');
+    expect(result.content).toContain('Reason:');
+    expect(result.content).toContain('Needs check:');
+    expect(result.content).toContain('Conflicts:');
+    expect(result.content).toContain('Evidence:');
+    expect(result.content).toContain('omitted to fit Discord message limits');
+    expect(result.content.length).toBeLessThanOrEqual(2000);
+  });
+
   it('should not render internal evidence controls when the draft has no evidence review', () => {
     // Arrange
     const draft = {

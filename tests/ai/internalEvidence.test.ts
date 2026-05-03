@@ -361,6 +361,21 @@ describe('GitHubCodeSearchEvidenceSource', () => {
           size: Buffer.byteLength(content, 'utf8'),
           content: Buffer.from(content, 'utf8').toString('base64'),
         }),
+      })
+      .mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ items: [] }),
+      })
+      .mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ items: [] }),
+      })
+      .mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ items: [] }),
       });
     const target = new GitHubCodeSearchEvidenceSource(
       'backend',
@@ -428,6 +443,11 @@ describe('GitHubCodeSearchEvidenceSource', () => {
           size: Buffer.byteLength(content, 'utf8'),
           content: Buffer.from(content, 'utf8').toString('base64'),
         }),
+      })
+      .mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ items: [] }),
       });
     const target = new GitHubCodeSearchEvidenceSource(
       'backend',
@@ -491,6 +511,11 @@ describe('GitHubCodeSearchEvidenceSource', () => {
           size: Buffer.byteLength(content, 'utf8'),
           content: Buffer.from(content, 'utf8').toString('base64'),
         }),
+      })
+      .mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ items: [] }),
       });
     const target = new GitHubCodeSearchEvidenceSource(
       'backend',
@@ -523,6 +548,67 @@ describe('GitHubCodeSearchEvidenceSource', () => {
       snippet: expect.stringContaining('profileImageUrl'),
       retrievalSignals: expect.arrayContaining(['external', 'keyword']),
     }));
+  });
+
+  it('should reject unrelated backend files that only match one generic narrative term', async () => {
+    // Arrange
+    const content = [
+      'private static final int CURRENT_PERIOD_OFFSET = 0;',
+      'private static final int PREVIOUS_PERIOD_OFFSET = 1;',
+      'private static final int TWO_PERIODS_AGO_OFFSET = 2;',
+    ].join('\n');
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          items: [{
+            path: 'src/main/java/whispy_server/whispy/domain/statistics/sleep/comparison/application/service/GetSleepPeriodComparisonService.java',
+            url: 'https://github.example/api/repos/whispy/backend/contents/src/main/java/whispy_server/whispy/domain/statistics/sleep/comparison/application/service/GetSleepPeriodComparisonService.java',
+            html_url: 'https://github.example/whispy/backend/blob/main/src/main/java/whispy_server/whispy/domain/statistics/sleep/comparison/application/service/GetSleepPeriodComparisonService.java',
+            repository: { full_name: 'whispy/backend' },
+            text_matches: [{ fragment: 'PREVIOUS_PERIOD_OFFSET' }],
+          }],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          type: 'file',
+          encoding: 'base64',
+          size: Buffer.byteLength(content, 'utf8'),
+          content: Buffer.from(content, 'utf8').toString('base64'),
+        }),
+      });
+    fetchFn.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ items: [] }),
+    });
+    const target = new GitHubCodeSearchEvidenceSource(
+      'backend',
+      [{ owner: 'whispy', repo: 'backend' }],
+      'implementation-behavior',
+      {
+        apiBaseUrl: 'https://github.example/api',
+        fetchFn,
+      },
+    );
+
+    // Act
+    const result = await target.findEvidence(
+      { ...baseInquiry, message: '프로필 사진을 새로 업로드했는데 이전 사진 복구가 가능한가요?' },
+      profileImageRouteDecision,
+    );
+
+    // Assert
+    expect(result).toEqual([
+      expect.objectContaining({
+        sourceType: 'backend',
+        status: 'empty',
+      }),
+    ]);
   });
 
   it('should search flutter profile image upload and delete code through route narrative terms', async () => {
@@ -933,6 +1019,50 @@ describe('NotionApiEvidenceSource', () => {
     expect(body.query).not.toContain('music');
     expect(body.query).not.toContain('account');
     expect(body.query).not.toContain('user');
+    expect(result).toEqual([
+      expect.objectContaining({
+        sourceType: 'notion',
+        status: 'empty',
+        snippet: 'No Notion page content matched the routed policy inquiry.',
+      }),
+    ]);
+  });
+
+  it('should not promote unrelated Notion pages that only match one generic narrative term', async () => {
+    // Arrange
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          results: [
+            notionPage('page-1', 'Sleep history guide', 'https://notion.example/sleep-history'),
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          results: [
+            notionHeading('block-1', 'Sleep history'),
+            notionParagraph('block-2', 'Previous sleep period comparison is documented here.'),
+          ],
+        }),
+      });
+    const target = new NotionApiEvidenceSource({
+      token: 'notion-token',
+      apiBaseUrl: 'https://notion.example',
+      fetchFn,
+    });
+
+    // Act
+    const result = await target.findEvidence(
+      { ...baseInquiry, message: '프로필 사진을 새로 업로드했는데 이전 사진 복구가 가능한가요?' },
+      profileImageRouteDecision,
+    );
+
+    // Assert
     expect(result).toEqual([
       expect.objectContaining({
         sourceType: 'notion',

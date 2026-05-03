@@ -229,16 +229,30 @@ function renderEvidenceReview(review: EvidenceReview | undefined, expanded: bool
     return renderEvidenceReviewSummary(review);
   }
 
-  return [
+  const header = [
     internalEvidenceReviewTitle,
     `Route: ${review.route}`,
-    `Reason: ${review.reason}`,
+    `Reason: ${singleLine(review.reason, 380)}`,
     `Confidence: ${review.confidence}`,
-    `Needs check: ${review.needsCheck}`,
-    `Conflicts: ${review.conflicts.length > 0 ? review.conflicts.join(' / ') : 'none'}`,
+    `Needs check: ${singleLine(review.needsCheck, 320)}`,
+    `Conflicts: ${singleLine(review.conflicts.length > 0 ? review.conflicts.join(' / ') : 'none', 260)}`,
     'Evidence:',
-    ...review.evidence.map(renderEvidenceItem),
-  ].join('\n');
+  ];
+  const lines = [...header];
+
+  for (let index = 0; index < review.evidence.length; index += 1) {
+    const itemLines = renderEvidenceItem(review.evidence[index] as EvidenceItem);
+    const next = [...lines, itemLines].join('\n');
+
+    if (next.length > maxDiscordMessageContentLength - evidenceReviewContentReserve) {
+      lines.push(`- ${review.evidence.length - index} more evidence item(s) omitted to fit Discord message limits.`);
+      break;
+    }
+
+    lines.push(itemLines);
+  }
+
+  return lines.join('\n');
 }
 
 function renderEvidenceReviewSummary(review: EvidenceReview): string {
@@ -271,7 +285,7 @@ function renderEvidenceItem(item: EvidenceItem): string {
   return [
     `- ${item.sourceType} [${item.authority}, ${item.status}] ${item.source}`,
     scoreParts.length > 0 ? `  signals: ${scoreParts.join(', ')}` : undefined,
-    `  ${singleLine(item.snippet, 260)}`,
+    `  ${singleLine(item.snippet, 160)}`,
   ].filter((line): line is string => typeof line === 'string').join('\n');
 }
 
@@ -294,6 +308,8 @@ type CachedInquiryDetails = Pick<Inquiry, 'inquiryId' | 'message' | 'deviceInfo'
 const inquiryDetailsTitle = '문의 원문';
 const internalEvidenceReviewTitle = '내부 근거 검토';
 const maxEvidenceReviewCacheEntries = 200;
+const maxDiscordMessageContentLength = 2000;
+const evidenceReviewContentReserve = 300;
 const inquiryDetailsCache = new Map<string, CachedInquiryDetails>();
 const evidenceReviewCache = new Map<string, EvidenceReview>();
 

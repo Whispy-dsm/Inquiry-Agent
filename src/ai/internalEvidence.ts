@@ -344,7 +344,10 @@ export class GitHubCodeSearchEvidenceSource implements EvidenceSourceProvider {
     const score = (evidenceItem.score ?? 0) + keywordScore + symbolScore;
     const sourceContentHash = contentHash(`${this.sourceType}\n${evidenceItem.source}\n${evidenceItem.title}\n${path}\n${content}`);
 
-    if (relevanceTerms.length > 0 && relevanceKeywordScore === 0 && relevanceSymbolScore === 0) {
+    if (
+      relevanceTerms.length > 0 &&
+      !hasEnoughRelevance(`${path}\n${content}`.toLowerCase(), symbolExtraction.symbols, relevanceTerms)
+    ) {
       return null;
     }
 
@@ -526,7 +529,7 @@ export class NotionApiEvidenceSource implements EvidenceSourceProvider {
       ? 0
       : scoreSearchText(text.toLowerCase(), relevanceTerms) + scoreSymbols(symbols, relevanceTerms);
 
-    if (relevanceTerms.length > 0 && focusedScore === 0) {
+    if (relevanceTerms.length > 0 && !hasEnoughRelevance(text.toLowerCase(), symbols, relevanceTerms)) {
       return null;
     }
 
@@ -1253,6 +1256,31 @@ function scoreSymbols(symbols: string[], terms: string[]): number {
 
   return score;
 }
+
+function hasEnoughRelevance(normalizedText: string, symbols: string[], terms: string[]): boolean {
+  if (terms.length === 0) {
+    return true;
+  }
+
+  const matchedTerms = terms.filter((term) => normalizedText.includes(term));
+  const priorityTerms = terms
+    .filter((term) => !genericRelevanceTerms.has(term))
+    .slice(0, 3);
+  const normalizedSymbols = symbols.map(normalizeSymbol).join('\n');
+  const matchedPriorityTerms = priorityTerms.filter((term) => normalizedText.includes(term) || normalizedSymbols.includes(term));
+
+  return matchedPriorityTerms.length > 0 && matchedTerms.length >= Math.min(2, terms.length);
+}
+
+const genericRelevanceTerms = new Set([
+  'history',
+  'previous',
+  'recovery',
+  'restoration',
+  'stores',
+  'storage',
+  'update',
+]);
 
 function countOccurrences(text: string, term: string): number {
   let count = 0;
