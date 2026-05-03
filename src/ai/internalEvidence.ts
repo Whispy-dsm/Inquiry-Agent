@@ -42,6 +42,7 @@ type FetchResponseLike = {
   ok: boolean;
   status: number;
   json(): Promise<unknown>;
+  text?: () => Promise<string>;
 };
 
 type FetchLike = (
@@ -52,6 +53,12 @@ type FetchLike = (
     body?: string;
   },
 ) => Promise<FetchResponseLike>;
+
+export type EvidenceLogger = {
+  debug?(payload: unknown, message?: string): void;
+  warn?(payload: unknown, message?: string): void;
+  error?(payload: unknown, message?: string): void;
+};
 
 /**
  * GitHub 코드 검색 기반 근거 제공자의 실행 옵션입니다.
@@ -68,6 +75,7 @@ export type GitHubCodeSearchEvidenceSourceOptions = {
   maxFetchedFileBytes?: number;
   maxSnippetLength?: number;
   useTypeScriptCompiler?: boolean;
+  logger?: EvidenceLogger;
 };
 
 /**
@@ -86,6 +94,7 @@ export type NotionApiEvidenceSourceOptions = {
   maxSearchTerms?: number;
   maxFetchedBlocks?: number;
   maxSnippetLength?: number;
+  logger?: EvidenceLogger;
 };
 
 type EmbeddingClientLike = {
@@ -140,6 +149,7 @@ export class GitHubCodeSearchEvidenceSource implements EvidenceSourceProvider {
   private readonly maxFetchedFileBytes: number;
   private readonly maxSnippetLength: number;
   private readonly useTypeScriptCompiler: boolean;
+  private readonly logger: EvidenceLogger | undefined;
 
   constructor(
     private readonly sourceType: InternalEvidenceSourceType,
@@ -154,6 +164,7 @@ export class GitHubCodeSearchEvidenceSource implements EvidenceSourceProvider {
     this.maxFetchedFileBytes = options.maxFetchedFileBytes ?? 120_000;
     this.maxSnippetLength = options.maxSnippetLength ?? 700;
     this.useTypeScriptCompiler = options.useTypeScriptCompiler ?? true;
+    this.logger = options.logger;
     this.token = options.token;
   }
 
@@ -219,12 +230,35 @@ export class GitHubCodeSearchEvidenceSource implements EvidenceSourceProvider {
     try {
       response = await this.fetchFn(url, { headers: this.searchHeaders() });
     } catch (error) {
+      this.logger?.warn?.(
+        {
+          event: 'internal_evidence.github.code_search.request_failed',
+          sourceType: this.sourceType,
+          repository: `${repository.owner}/${repository.repo}`,
+          query,
+          error: errorMessage(error),
+        },
+        'GitHub code search request failed',
+      );
+
       return [this.unavailableItem(repository, `GitHub code search failed: ${errorMessage(error)}`)];
     }
 
     const payload = await safeJson(response);
 
     if (!response.ok) {
+      this.logger?.warn?.(
+        {
+          event: 'internal_evidence.github.code_search.http_error',
+          sourceType: this.sourceType,
+          repository: `${repository.owner}/${repository.repo}`,
+          query,
+          status: response.status,
+          message: githubErrorMessage(payload),
+        },
+        'GitHub code search returned an HTTP error',
+      );
+
       return [
         this.unavailableItem(
           repository,
@@ -247,6 +281,13 @@ export class GitHubCodeSearchEvidenceSource implements EvidenceSourceProvider {
 
   private apiHeaders(): Record<string, string> {
     return this.headers('application/vnd.github+json');
+  }
+
+  private rawHeaders(): Record<string, string> {
+    return {
+      Accept: 'text/plain',
+      'User-Agent': 'inquiry-agent-internal-evidence-router',
+    };
   }
 
   private headers(accept: string): Record<string, string> {
@@ -276,14 +317,7 @@ export class GitHubCodeSearchEvidenceSource implements EvidenceSourceProvider {
     const source = item.html_url ?? `github:${fullName}/${item.path}`;
     const fragment = item.text_matches?.find((match) => typeof match.fragment === 'string')?.fragment;
     const relevanceTerms = buildRelevanceGateTerms(inquiry, decision);
-
-    if (!item.url && relevanceTerms.length > 0) {
-      const searchResultScore = scoreSearchText(`${item.path}\n${fragment ?? ''}`.toLowerCase(), relevanceTerms);
-
-      if (searchResultScore === 0) {
-        return null;
-      }
-    }
+    const searchResultText = `${item.path}\n${fragment ?? ''}`;
 
     const evidenceItem: EvidenceItem = {
       sourceType: this.sourceType,
@@ -305,10 +339,31 @@ export class GitHubCodeSearchEvidenceSource implements EvidenceSourceProvider {
       return this.withFetchedContentEvidence(evidenceItem, item.path, content, inquiry, decision);
     }
 
+    if (relevanceTerms.length > 0) {
+      const normalizedSearchResultText = normalizeSearchText(searchResultText);
+      const searchResultIsRelevant = item.url
+        ? hasEnoughRelevance(normalizedSearchResultText, [], relevanceTerms)
+        : scoreSearchText(normalizedSearchResultText, relevanceTerms) > 0;
+
+      if (!searchResultIsRelevant) {
+        return null;
+      }
+    }
+
     return evidenceItem;
   }
 
   private async fetchMatchedFileContent(item: GitHubSearchItem): Promise<string | null> {
+    const content = await this.fetchMatchedFileContentFromApi(item);
+
+    if (content) {
+      return content;
+    }
+
+    return this.fetchMatchedFileContentFromRawUrl(item);
+  }
+
+  private async fetchMatchedFileContentFromApi(item: GitHubSearchItem): Promise<string | null> {
     if (!item.url) {
       return null;
     }
@@ -316,15 +371,106 @@ export class GitHubCodeSearchEvidenceSource implements EvidenceSourceProvider {
     let response: FetchResponseLike;
     try {
       response = await this.fetchFn(item.url, { headers: this.apiHeaders() });
-    } catch {
+    } catch (error) {
+      this.logger?.warn?.(
+        {
+          event: 'internal_evidence.github.contents_api.request_failed',
+          sourceType: this.sourceType,
+          path: item.path,
+          source: item.html_url,
+          fallback: 'raw_github',
+          error: errorMessage(error),
+        },
+        'GitHub contents API request failed; trying raw file fallback',
+      );
+
       return null;
     }
 
     if (!response.ok) {
+      const payload = await safeJson(response);
+
+      this.logger?.warn?.(
+        {
+          event: 'internal_evidence.github.contents_api.http_error',
+          sourceType: this.sourceType,
+          path: item.path,
+          source: item.html_url,
+          fallback: 'raw_github',
+          status: response.status,
+          message: githubErrorMessage(payload),
+        },
+        'GitHub contents API returned an HTTP error; trying raw file fallback',
+      );
+
       return null;
     }
 
     return githubFileContent(await safeJson(response), this.maxFetchedFileBytes);
+  }
+
+  private async fetchMatchedFileContentFromRawUrl(item: GitHubSearchItem): Promise<string | null> {
+    const rawUrl = githubRawFileUrl(item.html_url);
+
+    if (!rawUrl) {
+      return null;
+    }
+
+    let response: FetchResponseLike;
+    try {
+      response = await this.fetchFn(rawUrl, { headers: this.rawHeaders() });
+    } catch (error) {
+      this.logger?.warn?.(
+        {
+          event: 'internal_evidence.github.raw_file.request_failed',
+          sourceType: this.sourceType,
+          path: item.path,
+          source: item.html_url,
+          rawSource: rawUrl,
+          error: errorMessage(error),
+        },
+        'GitHub raw file fallback request failed',
+      );
+
+      return null;
+    }
+
+    if (!response.ok || !response.text) {
+      this.logger?.warn?.(
+        {
+          event: 'internal_evidence.github.raw_file.http_error',
+          sourceType: this.sourceType,
+          path: item.path,
+          source: item.html_url,
+          rawSource: rawUrl,
+          status: response.status,
+          hasTextReader: Boolean(response.text),
+        },
+        'GitHub raw file fallback returned an HTTP error',
+      );
+
+      return null;
+    }
+
+    const content = await response.text();
+
+    if (Buffer.byteLength(content, 'utf8') > this.maxFetchedFileBytes) {
+      return null;
+    }
+
+    this.logger?.debug?.(
+      {
+        event: 'internal_evidence.github.raw_file.loaded',
+        sourceType: this.sourceType,
+        path: item.path,
+        source: item.html_url,
+        rawSource: rawUrl,
+        bytes: Buffer.byteLength(content, 'utf8'),
+      },
+      'GitHub raw file fallback loaded matched file content',
+    );
+
+    return content;
   }
 
   private async withFetchedContentEvidence(
@@ -337,16 +483,17 @@ export class GitHubCodeSearchEvidenceSource implements EvidenceSourceProvider {
     const terms = buildEvidenceTerms(inquiry, decision, this.sourceType);
     const symbolExtraction = await extractCodeSymbols(path, content, this.useTypeScriptCompiler);
     const relevanceTerms = buildRelevanceGateTerms(inquiry, decision);
-    const relevanceKeywordScore = scoreSearchText(`${path}\n${content}`.toLowerCase(), relevanceTerms);
+    const normalizedContent = normalizeSearchText(`${path}\n${content}`);
+    const relevanceKeywordScore = scoreSearchText(normalizedContent, relevanceTerms);
     const relevanceSymbolScore = scoreSymbols(symbolExtraction.symbols, relevanceTerms);
-    const keywordScore = scoreSearchText(`${path}\n${content}`.toLowerCase(), terms);
+    const keywordScore = scoreSearchText(normalizedContent, terms);
     const symbolScore = scoreSymbols(symbolExtraction.symbols, terms);
     const score = (evidenceItem.score ?? 0) + keywordScore + symbolScore;
     const sourceContentHash = contentHash(`${this.sourceType}\n${evidenceItem.source}\n${evidenceItem.title}\n${path}\n${content}`);
 
     if (
       relevanceTerms.length > 0 &&
-      !hasEnoughRelevance(`${path}\n${content}`.toLowerCase(), symbolExtraction.symbols, relevanceTerms)
+      !hasEnoughRelevance(normalizedContent, symbolExtraction.symbols, relevanceTerms)
     ) {
       return null;
     }
@@ -410,6 +557,7 @@ export class NotionApiEvidenceSource implements EvidenceSourceProvider {
   private readonly maxSearchTerms: number;
   private readonly maxFetchedBlocks: number;
   private readonly maxSnippetLength: number;
+  private readonly logger: EvidenceLogger | undefined;
 
   constructor(private readonly options: NotionApiEvidenceSourceOptions) {
     this.apiBaseUrl = (options.apiBaseUrl ?? 'https://api.notion.com').replace(/\/$/, '');
@@ -420,6 +568,7 @@ export class NotionApiEvidenceSource implements EvidenceSourceProvider {
     this.maxSearchTerms = options.maxSearchTerms ?? 6;
     this.maxFetchedBlocks = options.maxFetchedBlocks ?? 120;
     this.maxSnippetLength = options.maxSnippetLength ?? 700;
+    this.logger = options.logger;
   }
 
   async findEvidence(inquiry: Inquiry, decision: EvidenceRouteDecision): Promise<EvidenceItem[]> {
@@ -521,15 +670,16 @@ export class NotionApiEvidenceSource implements EvidenceSourceProvider {
       pageMetadata.title ?? '',
       content.blocks.map((block) => block.text).join('\n'),
     ].join('\n').trim();
-    const score = scoreSearchText(text.toLowerCase(), terms);
+    const score = scoreSearchText(normalizeSearchText(text), terms);
     const symbols = content.blocks.filter((block) => block.isHeading).map((block) => block.text);
     const symbolScore = scoreSymbols(symbols, terms);
     const totalScore = score + symbolScore;
-    const focusedScore = relevanceTerms.length === 0
-      ? 0
-      : scoreSearchText(text.toLowerCase(), relevanceTerms) + scoreSymbols(symbols, relevanceTerms);
 
-    if (relevanceTerms.length > 0 && !hasEnoughRelevance(text.toLowerCase(), symbols, relevanceTerms)) {
+    if (relevanceTerms.length > 0 && !hasEnoughBlockRelevance(
+      [pageMetadata.title ?? '', ...content.blocks.map((block) => block.text)],
+      symbols,
+      relevanceTerms,
+    )) {
       return null;
     }
 
@@ -618,12 +768,31 @@ export class NotionApiEvidenceSource implements EvidenceSourceProvider {
         ...init,
       });
     } catch (error) {
+      this.logger?.warn?.(
+        {
+          event: 'internal_evidence.notion.request_failed',
+          ...notionRequestLogContext(url, init.method),
+          error: errorMessage(error),
+        },
+        'Notion API request failed',
+      );
+
       return { error: `Notion API request failed: ${errorMessage(error)}` };
     }
 
     const payload = await safeJson(response);
 
     if (!response.ok) {
+      this.logger?.warn?.(
+        {
+          event: 'internal_evidence.notion.http_error',
+          ...notionRequestLogContext(url, init.method),
+          status: response.status,
+          message: notionErrorMessage(payload),
+        },
+        'Notion API returned an HTTP error',
+      );
+
       return { error: `Notion API returned HTTP ${response.status}: ${notionErrorMessage(payload)}` };
     }
 
@@ -794,6 +963,7 @@ export type GitHubEvidenceOptions = {
   backendRepos?: string | undefined;
   flutterRepos?: string | undefined;
   fetchFn?: FetchLike;
+  logger?: EvidenceLogger;
 };
 
 /** Notion 기반 정책 근거 제공자를 환경설정에서 만들 때 사용하는 옵션입니다. */
@@ -804,6 +974,7 @@ export type NotionEvidenceOptions = {
   notionVersion?: string | undefined;
   pageIds?: string | undefined;
   fetchFn?: FetchLike;
+  logger?: EvidenceLogger;
 };
 
 /**
@@ -815,6 +986,7 @@ export type NotionEvidenceOptions = {
 export type InternalEvidenceProviderOptions = {
   github?: GitHubEvidenceOptions;
   notion?: NotionEvidenceOptions;
+  logger?: EvidenceLogger;
   embedding?: {
     enabled?: boolean;
     apiKey?: string | undefined;
@@ -829,8 +1001,8 @@ export type InternalEvidenceProviderOptions = {
 export function createInternalEvidenceProvider(options: InternalEvidenceProviderOptions): InternalEvidenceProvider {
   const providers: Partial<Record<InternalEvidenceSourceType, EvidenceSourceProvider[]>> = {};
 
-  addGitHubProviders(providers, options.github);
-  addNotionProvider(providers, options.notion);
+  addGitHubProviders(providers, options.github, options.logger);
+  addNotionProvider(providers, options.notion, options.logger);
 
   return new CompositeInternalEvidenceProvider(providers, {
     reranker: createEmbeddingReranker(options.embedding),
@@ -841,13 +1013,14 @@ export function createInternalEvidenceProvider(options: InternalEvidenceProvider
 function addGitHubProviders(
   providers: Partial<Record<InternalEvidenceSourceType, EvidenceSourceProvider[]>>,
   options: GitHubEvidenceOptions | undefined,
+  logger: EvidenceLogger | undefined,
 ): void {
   if (!options?.enabled) {
     return;
   }
 
-  addGitHubProvider(providers, 'backend', options.backendRepos, 'implementation-behavior', options);
-  addGitHubProvider(providers, 'flutter', options.flutterRepos, 'client-behavior', options);
+  addGitHubProvider(providers, 'backend', options.backendRepos, 'implementation-behavior', options, logger);
+  addGitHubProvider(providers, 'flutter', options.flutterRepos, 'client-behavior', options, logger);
 }
 
 function addGitHubProvider(
@@ -856,6 +1029,7 @@ function addGitHubProvider(
   repositoryList: string | undefined,
   authority: EvidenceAuthority,
   options: GitHubEvidenceOptions,
+  logger: EvidenceLogger | undefined,
 ): void {
   const repositories = parseGitHubRepositories(repositoryList);
 
@@ -877,6 +1051,12 @@ function addGitHubProvider(
     providerOptions.fetchFn = options.fetchFn;
   }
 
+  const resolvedLogger = options.logger ?? logger;
+
+  if (resolvedLogger) {
+    providerOptions.logger = resolvedLogger;
+  }
+
   providers[sourceType] = [
     ...(providers[sourceType] ?? []),
     new GitHubCodeSearchEvidenceSource(sourceType, repositories, authority, providerOptions),
@@ -886,6 +1066,7 @@ function addGitHubProvider(
 function addNotionProvider(
   providers: Partial<Record<InternalEvidenceSourceType, EvidenceSourceProvider[]>>,
   options: NotionEvidenceOptions | undefined,
+  logger: EvidenceLogger | undefined,
 ): void {
   if (!options?.enabled) {
     return;
@@ -911,6 +1092,12 @@ function addNotionProvider(
 
   if (options.fetchFn) {
     providerOptions.fetchFn = options.fetchFn;
+  }
+
+  const resolvedLogger = options.logger ?? logger;
+
+  if (resolvedLogger) {
+    providerOptions.logger = resolvedLogger;
   }
 
   providers.notion = [
@@ -1075,9 +1262,10 @@ function buildExternalEvidenceTermGroups(
   }
 
   const narrativeTerms = safeNarrativeTerms(`${decision.reason}\n${decision.needsCheck}`);
+  const narrativeTermGroups = buildNarrativeSearchTermGroups(narrativeTerms);
 
-  if (narrativeTerms.length > 0) {
-    return narrativeTerms.slice(0, 6).map((term) => [term]);
+  if (narrativeTermGroups.length > 0) {
+    return narrativeTermGroups.slice(0, 6);
   }
 
   const terms = [
@@ -1086,6 +1274,45 @@ function buildExternalEvidenceTermGroups(
   ];
 
   return [uniqueEvidenceTerms(terms)];
+}
+
+function buildNarrativeSearchTermGroups(terms: string[]): string[][] {
+  const termSet = new Set(terms);
+  const groups: string[][] = [];
+
+  if (termSet.has('profile') && (termSet.has('image') || termSet.has('photo'))) {
+    for (const assetTerm of ['image', 'photo', 'upload', 'url', 'overwrite']) {
+      if (termSet.has(assetTerm)) {
+        groups.push(['profile', assetTerm]);
+      }
+    }
+  }
+
+  for (const term of terms) {
+    if (!genericExternalSearchTerms.has(term)) {
+      groups.push([term]);
+    }
+  }
+
+  return dedupeTermGroups(groups);
+}
+
+function dedupeTermGroups(groups: string[][]): string[][] {
+  const seen = new Set<string>();
+  const result: string[][] = [];
+
+  for (const group of groups) {
+    const key = group.join('\u0000');
+
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    result.push(group);
+  }
+
+  return result;
 }
 
 function buildFocusedEvidenceTerms(
@@ -1108,7 +1335,33 @@ function buildRelevanceGateTerms(inquiry: Inquiry, decision: EvidenceRouteDecisi
 }
 
 function uniqueEvidenceTerms(terms: string[]): string[] {
-  return Array.from(new Set(terms.map((term) => term.toLowerCase()).filter((term) => term.length >= 2)));
+  const variants = terms
+    .flatMap((term) => [term, ...tokenize(normalizeSearchText(term))])
+    .map((term) => term.toLowerCase())
+    .filter((term) => term.length >= 2)
+    .flatMap((term) => {
+      const singular = singularEvidenceTerm(term);
+
+      return singular ? [term, singular] : [term];
+    });
+
+  return Array.from(new Set(variants));
+}
+
+function singularEvidenceTerm(term: string): string | null {
+  if (term.length <= 4 || term.endsWith('ss')) {
+    return null;
+  }
+
+  if (term.endsWith('ies')) {
+    return `${term.slice(0, -3)}y`;
+  }
+
+  if (term.endsWith('s')) {
+    return term.slice(0, -1);
+  }
+
+  return null;
 }
 
 const narrativeStopWords = new Set([
@@ -1125,9 +1378,13 @@ const narrativeStopWords = new Set([
   'client',
   'clients',
   'confirm',
+  'can',
   'customer',
   'customer-facing',
   'definition',
+  'did',
+  'do',
+  'does',
   'evidence',
   'facing',
   'feature',
@@ -1138,7 +1395,9 @@ const narrativeStopWords = new Set([
   'must',
   'needed',
   'needs',
+  'not',
   'notion',
+  'or',
   'policy',
   'product',
   'review',
@@ -1148,10 +1407,34 @@ const narrativeStopWords = new Set([
   'source',
   'support',
   'the',
+  'this',
+  'upon',
   'user',
   'users',
   'verify',
   'whether',
+]);
+
+const genericExternalSearchTerms = new Set([
+  'after',
+  'asset',
+  'assets',
+  'data',
+  'history',
+  'maintain',
+  'maintains',
+  'modified',
+  'previous',
+  'recovery',
+  'retention',
+  'restoration',
+  'storage',
+  'support',
+  'supports',
+  'update',
+  'updated',
+  'version',
+  'versioning',
 ]);
 
 function safeNarrativeTerms(text: string): string[] {
@@ -1241,6 +1524,13 @@ function scoreSearchText(searchText: string, terms: string[]): number {
   return score;
 }
 
+function normalizeSearchText(text: string): string {
+  return text
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .toLowerCase();
+}
+
 function scoreSymbols(symbols: string[], terms: string[]): number {
   let score = 0;
 
@@ -1262,11 +1552,19 @@ function hasEnoughRelevance(normalizedText: string, symbols: string[], terms: st
     return true;
   }
 
+  const normalizedSymbols = symbols.map(normalizeSymbol).join('\n');
+
+  if (
+    requiresProfileImageRelevance(terms)
+    && !hasProfileImageEvidenceSignal(`${normalizedText}\n${normalizedSymbols}`)
+  ) {
+    return false;
+  }
+
   const matchedTerms = terms.filter((term) => normalizedText.includes(term));
   const priorityTerms = terms
     .filter((term) => !genericRelevanceTerms.has(term))
     .slice(0, 4);
-  const normalizedSymbols = symbols.map(normalizeSymbol).join('\n');
   const matchedPriorityTerms = priorityTerms.filter((term) => normalizedText.includes(term) || normalizedSymbols.includes(term));
 
   if (matchedPriorityTerms.length > 0 && matchedTerms.length >= Math.min(2, terms.length)) {
@@ -1276,17 +1574,59 @@ function hasEnoughRelevance(normalizedText: string, symbols: string[], terms: st
   return matchedPriorityTerms.some((term) => term.length >= 10 && normalizedSymbols.includes(term));
 }
 
+function requiresProfileImageRelevance(terms: string[]): boolean {
+  const termSet = new Set(terms);
+
+  return (termSet.has('profile') || termSet.has('profiles'))
+    && ['image', 'images', 'photo', 'photos'].some((term) => termSet.has(term));
+}
+
+function hasProfileImageEvidenceSignal(text: string): boolean {
+  return [
+    'image',
+    'photo',
+    'profile image',
+    'profileimage',
+    'profile image url',
+    'profileimageurl',
+    'upload',
+    'overwrite',
+  ].some((term) => text.includes(term));
+}
+
+function hasEnoughBlockRelevance(blocks: string[], symbols: string[], terms: string[]): boolean {
+  if (terms.length === 0) {
+    return true;
+  }
+
+  if (blocks.some((block) => hasEnoughRelevance(normalizeSearchText(block), [], terms))) {
+    return true;
+  }
+
+  return hasEnoughRelevance('', symbols, terms);
+}
+
 const genericRelevanceTerms = new Set([
+  'asset',
+  'assets',
+  'data',
   'history',
   'profile',
   'profiles',
   'previous',
   'recovery',
   'restoration',
+  'retention',
   'stores',
   'storage',
   'update',
   'updated',
+  'upload',
+  'uploaded',
+  'user',
+  'users',
+  'version',
+  'versioning',
 ]);
 
 function countOccurrences(text: string, term: string): number {
@@ -1663,6 +2003,40 @@ function githubFileContent(payload: unknown, maxBytes: number): string | null {
   return content;
 }
 
+function githubRawFileUrl(htmlUrl: string | undefined): string | null {
+  if (!htmlUrl) {
+    return null;
+  }
+
+  let url: URL;
+  try {
+    url = new URL(htmlUrl);
+  } catch {
+    return null;
+  }
+
+  if (url.hostname !== 'github.com') {
+    return null;
+  }
+
+  const parts = url.pathname.split('/').filter(Boolean);
+  const blobIndex = parts.indexOf('blob');
+
+  if (blobIndex !== 2 || parts.length <= 4) {
+    return null;
+  }
+
+  const [owner, repo] = parts;
+  const ref = parts[3];
+  const path = parts.slice(4).map(encodeURIComponent).join('/');
+
+  if (!owner || !repo || !ref || !path) {
+    return null;
+  }
+
+  return `https://raw.githubusercontent.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${encodeURIComponent(ref)}/${path}`;
+}
+
 type NotionSearchResult = {
   id: string;
   title?: string;
@@ -1810,6 +2184,24 @@ function notionErrorMessage(payload: unknown): string {
   }
 
   return 'unknown Notion error';
+}
+
+function notionRequestLogContext(url: string, method: string | undefined): Record<string, string> {
+  let endpoint = 'unknown';
+
+  try {
+    const parsed = new URL(url);
+    endpoint = parsed.pathname
+      .replace(/\/v1\/pages\/[^/]+/, '/v1/pages/:page_id')
+      .replace(/\/v1\/blocks\/[^/]+\/children/, '/v1/blocks/:block_id/children');
+  } catch {
+    endpoint = 'invalid-url';
+  }
+
+  return {
+    method: method ?? 'GET',
+    endpoint,
+  };
 }
 
 async function safeJson(response: FetchResponseLike): Promise<unknown> {

@@ -260,11 +260,13 @@ describe('GitHubCodeSearchEvidenceSource', () => {
 
   it('should return unavailable evidence on GitHub search failures', async () => {
     // Arrange
+    const logger = { warn: vi.fn() };
     const target = new GitHubCodeSearchEvidenceSource(
       'backend',
       [{ owner: 'whispy', repo: 'backend' }],
       'implementation-behavior',
       {
+        logger,
         fetchFn: vi.fn().mockResolvedValue({
           ok: false,
           status: 403,
@@ -284,6 +286,16 @@ describe('GitHubCodeSearchEvidenceSource', () => {
         snippet: expect.stringContaining('rate limited'),
       }),
     ]);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'internal_evidence.github.code_search.http_error',
+        sourceType: 'backend',
+        repository: 'whispy/backend',
+        status: 403,
+        message: 'rate limited',
+      }),
+      'GitHub code search returned an HTTP error',
+    );
   });
 
   it('should ignore low-signal task documents for notification evidence', async () => {
@@ -537,6 +549,7 @@ describe('GitHubCodeSearchEvidenceSource', () => {
     const url = String(fetchFn.mock.calls[0]?.[0]);
     const query = decodeURIComponent(new URL(url).searchParams.get('q') ?? '');
     expect(query).toContain('profile');
+    expect(query).toContain('image');
     expect(query).toContain('repo:whispy/backend');
     expect(query).not.toContain('auth');
     expect(query).not.toContain('account');
@@ -676,6 +689,233 @@ describe('GitHubCodeSearchEvidenceSource', () => {
     ]);
   });
 
+  it('should not promote weak GitHub search matches when file content cannot be validated', async () => {
+    // Arrange
+    const fetchFn = vi.fn(async (input: string) => {
+      const url = String(input);
+
+      if (url.includes('/search/code')) {
+        const query = decodeURIComponent(new URL(url).searchParams.get('q') ?? '');
+
+        if (query.includes('profile')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              items: [
+                {
+                  path: 'src/main/java/whispy_server/whispy/global/config/r2/R2Config.java',
+                  url: 'https://github.example/api/repos/whispy/backend/contents/src/main/java/whispy_server/whispy/global/config/r2/R2Config.java',
+                  html_url: 'https://github.example/whispy/backend/blob/main/src/main/java/whispy_server/whispy/global/config/r2/R2Config.java',
+                  repository: { full_name: 'whispy/backend' },
+                  text_matches: [{ fragment: 'import org.springframework.context.annotation.Profile;' }],
+                },
+                {
+                  path: '.coderabbit.yaml',
+                  url: 'https://github.example/api/repos/whispy/backend/contents/.coderabbit.yaml',
+                  html_url: 'https://github.example/whispy/backend/blob/main/.coderabbit.yaml',
+                  repository: { full_name: 'whispy/backend' },
+                  text_matches: [{ fragment: 'reviews:\\n  profile: chill' }],
+                },
+              ],
+            }),
+          };
+        }
+
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ items: [] }),
+        };
+      }
+
+      return {
+        ok: false,
+        status: 403,
+        json: async () => ({ message: 'contents API forbidden' }),
+      };
+    });
+    const target = new GitHubCodeSearchEvidenceSource(
+      'backend',
+      [{ owner: 'whispy', repo: 'backend' }],
+      'implementation-behavior',
+      {
+        apiBaseUrl: 'https://github.example/api',
+        fetchFn,
+      },
+    );
+
+    // Act
+    const result = await target.findEvidence(
+      { ...baseInquiry, message: '?꾨줈???ъ쭊???덈줈 ?낅줈?쒗뻽?붾뜲 ?댁쟾 ?ъ쭊 蹂듦뎄媛 媛?ν븳媛??' },
+      profileImageRouteDecision,
+    );
+
+    // Assert
+    expect(result).toEqual([
+      expect.objectContaining({
+        sourceType: 'backend',
+        status: 'empty',
+      }),
+    ]);
+  });
+
+  it('should keep strong GitHub text matches even when file content cannot be fetched', async () => {
+    // Arrange
+    const fetchFn = vi.fn(async (input: string) => {
+      const url = String(input);
+
+      if (url.includes('/search/code')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async (): Promise<unknown> => ({
+            items: [
+              {
+                path: 'src/main/java/whispy_server/whispy/domain/user/application/service/ChangeProfileService.java',
+                url: 'https://github.example/api/repos/whispy/backend/contents/src/main/java/whispy_server/whispy/domain/user/application/service/ChangeProfileService.java',
+                html_url: 'https://github.example/whispy/backend/blob/main/src/main/java/whispy_server/whispy/domain/user/application/service/ChangeProfileService.java',
+                repository: { full_name: 'whispy/backend' },
+                text_matches: [{ fragment: 'request.profileImageUrl()' }],
+              },
+            ],
+          }),
+        };
+      }
+
+      return {
+        ok: false,
+        status: 403,
+        json: async () => ({ message: 'contents API forbidden' }),
+      };
+    });
+    const target = new GitHubCodeSearchEvidenceSource(
+      'backend',
+      [{ owner: 'whispy', repo: 'backend' }],
+      'implementation-behavior',
+      {
+        apiBaseUrl: 'https://github.example/api',
+        fetchFn,
+      },
+    );
+
+    // Act
+    const result = await target.findEvidence(
+      { ...baseInquiry, message: '?꾨줈???ъ쭊???덈줈 ?낅줈?쒗뻽?붾뜲 ?댁쟾 ?ъ쭊 蹂듦뎄媛 媛?ν븳媛??' },
+      profileImageRouteDecision,
+    );
+
+    // Assert
+    expect(result[0]).toEqual(expect.objectContaining({
+      sourceType: 'backend',
+      status: 'found',
+      source: 'https://github.example/whispy/backend/blob/main/src/main/java/whispy_server/whispy/domain/user/application/service/ChangeProfileService.java',
+      snippet: expect.stringContaining('profileImageUrl'),
+    }));
+  });
+
+  it('should fall back to raw GitHub file content when the contents API is forbidden', async () => {
+    // Arrange
+    const logger = {
+      debug: vi.fn(),
+      warn: vi.fn(),
+    };
+    const content = [
+      'public MyProfileResponse execute(ChangeProfileRequest request) {',
+      '  User updateUser = user.changeProfile(request.name(), request.profileImageUrl(), request.gender());',
+      '  userSavePort.save(updateUser);',
+      '}',
+    ].join('\n');
+    const fetchFn = vi.fn(async (input: string) => {
+      const url = String(input);
+
+      if (url.includes('/search/code')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            items: [
+              {
+                path: 'src/main/java/whispy_server/whispy/domain/user/application/service/ChangeProfileService.java',
+                url: 'https://github.example/api/repos/whispy/backend/contents/src/main/java/whispy_server/whispy/domain/user/application/service/ChangeProfileService.java',
+                html_url: 'https://github.com/whispy/backend/blob/main/src/main/java/whispy_server/whispy/domain/user/application/service/ChangeProfileService.java',
+                repository: { full_name: 'whispy/backend' },
+                text_matches: [{ fragment: 'request.profileImageUrl()' }],
+              },
+            ],
+          }),
+        };
+      }
+
+      if (url.includes('/contents/')) {
+        return {
+          ok: false,
+          status: 403,
+          json: async (): Promise<unknown> => ({ message: 'contents API forbidden' }),
+        };
+      }
+
+      return {
+        ok: true,
+        status: 200,
+        json: async (): Promise<unknown> => null,
+        text: async () => content,
+      };
+    });
+    const target = new GitHubCodeSearchEvidenceSource(
+      'backend',
+      [{ owner: 'whispy', repo: 'backend' }],
+      'implementation-behavior',
+      {
+        apiBaseUrl: 'https://github.example/api',
+        fetchFn,
+        logger,
+      },
+    );
+
+    // Act
+    const result = await target.findEvidence(
+      { ...baseInquiry, message: '?袁⑥쨮????彛????덉쨮 ??낆쨮??쀫뻥?遺얜쑓 ??곸읈 ??彛?癰귣벀?꾢첎? 揶쎛?館釉녑첎???' },
+      profileImageRouteDecision,
+    );
+
+    // Assert
+    expect(fetchFn).toHaveBeenCalledWith(
+      'https://raw.githubusercontent.com/whispy/backend/main/src/main/java/whispy_server/whispy/domain/user/application/service/ChangeProfileService.java',
+      expect.objectContaining({
+        headers: expect.not.objectContaining({
+          Authorization: expect.any(String),
+        }),
+      }),
+    );
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'internal_evidence.github.contents_api.http_error',
+        sourceType: 'backend',
+        path: 'src/main/java/whispy_server/whispy/domain/user/application/service/ChangeProfileService.java',
+        fallback: 'raw_github',
+        status: 403,
+        message: 'contents API forbidden',
+      }),
+      'GitHub contents API returned an HTTP error; trying raw file fallback',
+    );
+    expect(logger.debug).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'internal_evidence.github.raw_file.loaded',
+        sourceType: 'backend',
+        path: 'src/main/java/whispy_server/whispy/domain/user/application/service/ChangeProfileService.java',
+        bytes: Buffer.byteLength(content, 'utf8'),
+      }),
+      'GitHub raw file fallback loaded matched file content',
+    );
+    expect(result[0]).toEqual(expect.objectContaining({
+      sourceType: 'backend',
+      status: 'found',
+      snippet: expect.stringContaining('profileImageUrl'),
+      circuitContentHash: expect.any(String),
+    }));
+  });
+
   it('should search flutter profile image upload and delete code through route narrative terms', async () => {
     // Arrange
     const content = [
@@ -730,6 +970,7 @@ describe('GitHubCodeSearchEvidenceSource', () => {
     const url = String(fetchFn.mock.calls[0]?.[0]);
     const query = decodeURIComponent(new URL(url).searchParams.get('q') ?? '');
     expect(query).toContain('profile');
+    expect(query).toContain('image');
     expect(query).toContain('repo:whispy/flutter');
     expect(query).not.toContain('auth');
     expect(query).not.toContain('account');
@@ -924,8 +1165,10 @@ describe('NotionApiEvidenceSource', () => {
 
   it('should return unavailable evidence on Notion API failures', async () => {
     // Arrange
+    const logger = { warn: vi.fn() };
     const target = new NotionApiEvidenceSource({
       token: 'notion-token',
+      logger,
       fetchFn: vi.fn().mockResolvedValue({
         ok: false,
         status: 401,
@@ -944,6 +1187,16 @@ describe('NotionApiEvidenceSource', () => {
         snippet: expect.stringContaining('unauthorized'),
       }),
     ]);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'internal_evidence.notion.http_error',
+        method: 'POST',
+        endpoint: '/v1/search',
+        status: 401,
+        message: 'unauthorized',
+      }),
+      'Notion API returned an HTTP error',
+    );
   });
 
   it('should traverse child blocks even when the parent block has no text', async () => {
@@ -1135,6 +1388,89 @@ describe('NotionApiEvidenceSource', () => {
         snippet: 'No Notion page content matched the routed policy inquiry.',
       }),
     ]);
+  });
+
+  it('should not promote configured Notion root pages with scattered generic matches', async () => {
+    // Arrange
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => notionPage('page-1', 'Whispy', 'https://notion.example/whispy'),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          results: [
+            notionHeading('block-1', 'Profile display settings'),
+            notionParagraph('block-2', 'Sleep and focus music playback is documented here.'),
+            notionHeading('block-3', 'Data retention policy'),
+            notionParagraph('block-4', 'Listening history storage is documented separately.'),
+          ],
+        }),
+      });
+    const target = new NotionApiEvidenceSource({
+      token: 'notion-token',
+      apiBaseUrl: 'https://notion.example',
+      pageIds: 'page-1',
+      fetchFn,
+    });
+
+    // Act
+    const result = await target.findEvidence(
+      { ...baseInquiry, message: '?꾨줈???ъ쭊???덈줈 ?낅줈?쒗뻽?붾뜲 ?댁쟾 ?ъ쭊 蹂듦뎄媛 媛?ν븳媛??' },
+      profileImageRouteDecision,
+    );
+
+    // Assert
+    expect(result).toEqual([
+      expect.objectContaining({
+        sourceType: 'notion',
+        status: 'empty',
+        snippet: 'No Notion page content matched the routed policy inquiry.',
+      }),
+    ]);
+  });
+
+  it('should keep configured Notion policy blocks that directly match profile image retention', async () => {
+    // Arrange
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => notionPage('page-1', 'Profile Policy', 'https://notion.example/profile-policy'),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          results: [
+            notionHeading('block-1', 'Profile image retention policy'),
+            notionParagraph('block-2', 'Previous uploaded images are not restored after profile updates.'),
+          ],
+        }),
+      });
+    const target = new NotionApiEvidenceSource({
+      token: 'notion-token',
+      apiBaseUrl: 'https://notion.example',
+      pageIds: 'page-1',
+      fetchFn,
+    });
+
+    // Act
+    const result = await target.findEvidence(
+      { ...baseInquiry, message: '?꾨줈???ъ쭊???덈줈 ?낅줈?쒗뻽?붾뜲 ?댁쟾 ?ъ쭊 蹂듦뎄媛 媛?ν븳媛??' },
+      profileImageRouteDecision,
+    );
+
+    // Assert
+    expect(result[0]).toEqual(expect.objectContaining({
+      sourceType: 'notion',
+      status: 'found',
+      source: 'https://notion.example/profile-policy',
+      snippet: expect.stringContaining('Profile image retention policy'),
+    }));
   });
 
   it('should not promote unrelated Notion pages that only match one generic narrative term', async () => {

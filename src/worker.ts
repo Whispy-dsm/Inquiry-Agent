@@ -3,7 +3,7 @@ import pino from 'pino';
 import { MarkdownDirectoryContextProvider } from './ai/contextProvider.js';
 import { GeminiDraftGenerator } from './ai/geminiDraftGenerator.js';
 import { createInternalEvidenceProvider } from './ai/internalEvidence.js';
-import type { InternalEvidenceProvider } from './ai/internalEvidence.js';
+import type { EvidenceLogger, InternalEvidenceProvider } from './ai/internalEvidence.js';
 import { KnowledgeCircuitService } from './ai/knowledgeCircuit.js';
 import { SqliteKnowledgeCircuitStore } from './ai/knowledgeCircuitStore.js';
 import { loadEnv } from './config/env.js';
@@ -18,6 +18,8 @@ import { InquiryWorkflow } from './workflow/inquiryWorkflow.js';
 
 /** pino와 테스트 logger가 공통으로 만족해야 하는 최소 로깅 계약입니다. */
 type LoggerLike = {
+  debug(payload: unknown, message?: string): void;
+  warn(payload: unknown, message?: string): void;
   info(message: string): void;
   error(payload: unknown, message?: string): void;
 };
@@ -109,6 +111,7 @@ export function createWorkerApp(deps: WorkerAppDeps) {
 export function createInternalEvidenceProviderFromEnv(
   env: InternalEvidenceEnv,
   knowledgeCircuit?: KnowledgeCircuitService,
+  logger?: EvidenceLogger,
 ): InternalEvidenceProvider | undefined {
   if (!env.ENABLE_INTERNAL_EVIDENCE_ROUTER) {
     return undefined;
@@ -116,7 +119,7 @@ export function createInternalEvidenceProviderFromEnv(
 
   const resolvedKnowledgeCircuit = knowledgeCircuit ?? createKnowledgeCircuitFromEnv(env);
 
-  return createInternalEvidenceProvider({
+  const providerOptions = {
     github: {
       enabled: env.ENABLE_INTERNAL_EVIDENCE_GITHUB_SEARCH,
       token: env.INTERNAL_EVIDENCE_GITHUB_TOKEN,
@@ -138,7 +141,9 @@ export function createInternalEvidenceProviderFromEnv(
       maxCandidates: env.INTERNAL_EVIDENCE_EMBEDDING_MAX_CANDIDATES,
     },
     knowledgeCircuit: resolvedKnowledgeCircuit,
-  });
+  };
+
+  return createInternalEvidenceProvider(logger ? { ...providerOptions, logger } : providerOptions);
 }
 
 function createKnowledgeCircuitFromEnv(env: InternalEvidenceEnv): KnowledgeCircuitService | undefined {
@@ -194,7 +199,7 @@ export async function startWorker(
   const knowledgeCircuit = env.ENABLE_INTERNAL_EVIDENCE_ROUTER
     ? createKnowledgeCircuitFromEnv(env)
     : undefined;
-  const internalEvidenceProvider = createInternalEvidenceProviderFromEnv(env, knowledgeCircuit);
+  const internalEvidenceProvider = createInternalEvidenceProviderFromEnv(env, knowledgeCircuit, logger);
   const draftGeneratorOptions = internalEvidenceProvider ? { internalEvidenceProvider } : {};
   const draftGenerator = new GeminiDraftGenerator(
     env.GEMINI_API_KEY,
