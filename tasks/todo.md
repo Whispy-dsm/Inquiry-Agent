@@ -1093,3 +1093,28 @@ Related issue: #13
   - `git diff --check` -> passed with CRLF warnings only.
   - `npm run lint` -> blocked by existing missing ESLint v9 `eslint.config.*`.
 - Remaining risks: `deviceInfo` is still a free-text field, so the model decides whether `One UI 6` is OS-only; if exact model/OS separation becomes important, the form should split them into separate columns.
+
+## Discord Inquiry Original Toggle
+
+### Plan
+
+- [x] Remove always-visible device information from the Discord review card header.
+- [x] Add a `문의 열기` / `문의 닫기` toggle that reveals the customer original inquiry text.
+- [x] Include optional device information inside the inquiry toggle content, not as a separate top-level line.
+- [x] Keep inquiry and evidence toggles independent.
+- [x] Add focused render and interaction tests.
+- [x] Run focused tests, full tests, typecheck, build, lint attempt, and diff hygiene.
+
+### Review
+
+- Changed files: `src/discord/renderInquiryMessage.ts`, `src/discord/interactionHandlers.ts`, `tests/discord/renderInquiryMessage.test.ts`, `tests/discord/interactionHandlers.test.ts`, `tasks/lessons.md`, `tasks/todo.md`.
+- Root cause: the review card showed AI summary and draft, but did not expose the customer's exact original inquiry unless the reviewer inferred it from the summary. The prior device-info fix also put optional metadata in the collapsed header, which made the card noisier.
+- Simplifications made: reused the existing Discord button/update flow and in-memory cache pattern instead of adding a new Sheet lookup or persistent storage path for original inquiry toggles.
+- Verification:
+  - `npm run test -- tests/discord/renderInquiryMessage.test.ts tests/discord/interactionHandlers.test.ts` -> 2 files / 16 tests passed.
+  - `npm run test` -> 18 files / 111 tests passed.
+  - `npm run typecheck` -> passed.
+  - `npm run build` -> passed.
+  - `git diff --check` -> passed with CRLF warnings only.
+  - `npm run lint` -> blocked by existing missing ESLint v9 `eslint.config.*`.
+- Remaining risks: 원문 토글도 근거 토글과 마찬가지로 워커 프로세스 메모리 캐시를 사용하므로, 워커 재시작 후 이미 올라간 메시지의 원문 토글은 다시 열 수 없습니다.

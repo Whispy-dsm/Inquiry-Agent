@@ -111,3 +111,5 @@
 - Correction: The user pointed out that device model or OS information may already be present in the inquiry form, so drafts should not blindly ask for both again.
 - Rule: Map optional form metadata that can affect a customer reply into the inquiry model and include it in the draft prompt.
 - Rule: When only part of a troubleshooting detail is present, ask only for the missing part instead of repeating information the customer already provided.
+- Correction: The user questioned why device information was always shown at the top of Discord review cards.
+- Rule: Keep optional customer metadata near the original inquiry context unless it is essential for the collapsed review summary.
