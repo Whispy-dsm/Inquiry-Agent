@@ -57,6 +57,12 @@ type GeminiLike = {
 type GeminiDraftGeneratorOptions = {
   /** 켜져 있으면 초안 생성 전에 내부 근거 라우팅과 근거 수집을 수행합니다. */
   internalEvidenceProvider?: InternalEvidenceProvider;
+  /** 내부 근거 수집 결과를 운영 로그로 남기기 위한 선택적 logger입니다. */
+  logger?: EvidenceReviewLogger;
+};
+
+type EvidenceReviewLogger = {
+  info?(payload: unknown, message?: string): void;
 };
 
 const draftResponseSchema = {
@@ -212,8 +218,7 @@ export class GeminiDraftGenerator {
     }
 
     const evidence = await this.options.internalEvidenceProvider.findEvidence(inquiry, decision);
-
-    return {
+    const review = {
       route: decision.route,
       reason: decision.reason,
       requestedSources: decision.requestedSources,
@@ -222,6 +227,17 @@ export class GeminiDraftGenerator {
       confidence: downgradeConfidenceForEvidenceFailures(decision.confidence, evidence),
       needsCheck: decision.needsCheck,
     };
+
+    this.logEvidenceReview(inquiry.inquiryId, review);
+
+    return review;
+  }
+
+  private logEvidenceReview(inquiryId: string, review: EvidenceReview): void {
+    this.options.logger?.info?.(
+      formatEvidenceReviewLogPayload(inquiryId, review),
+      'Internal evidence review collected',
+    );
   }
 }
 
@@ -485,6 +501,79 @@ function summarizeEvidenceForModel(snippet: string): string {
   }
 
   return `${compact.slice(0, 217).trimEnd()}...`;
+}
+
+function formatEvidenceReviewLogPayload(inquiryId: string, review: EvidenceReview): Record<string, unknown> {
+  return {
+    event: 'internal_evidence.review.collected',
+    inquiryId,
+    route: review.route,
+    requestedSources: review.requestedSources,
+    confidence: review.confidence,
+    reason: sanitizeEvidenceLogText(review.reason, 360),
+    needsCheck: sanitizeEvidenceLogText(review.needsCheck, 360),
+    conflicts: review.conflicts.map((conflict) => sanitizeEvidenceLogText(conflict, 240)),
+    statusCounts: evidenceStatusCounts(review.evidence),
+    evidence: review.evidence.map((item) => ({
+      sourceType: item.sourceType,
+      authority: item.authority,
+      status: item.status,
+      title: sanitizeEvidenceLogText(item.title, 180),
+      source: sanitizeEvidenceLogSource(item.source, 500),
+      retrievalSignals: item.retrievalSignals ?? [],
+      score: item.score,
+      semanticScore: item.semanticScore,
+      circuitScore: item.circuitScore,
+      snippet: sanitizeEvidenceLogText(item.snippet, 500),
+    })),
+  };
+}
+
+function evidenceStatusCounts(evidence: EvidenceReview['evidence']): Record<string, number> {
+  return evidence.reduce<Record<string, number>>((counts, item) => {
+    counts[item.status] = (counts[item.status] ?? 0) + 1;
+
+    return counts;
+  }, {});
+}
+
+function sanitizeEvidenceLogText(value: string, maxLength: number): string {
+  const sanitized = value
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]')
+    .replace(/\b(?:[A-Za-z0-9_-]{20,}|[a-f0-9]{24,})\b/gi, '[token]')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (sanitized.length <= maxLength) {
+    return sanitized;
+  }
+
+  return `${sanitized.slice(0, maxLength - 3).trimEnd()}...`;
+}
+
+function sanitizeEvidenceLogSource(value: string, maxLength: number): string {
+  const withoutQuery = stripUrlQueryAndHash(value)
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (withoutQuery.length <= maxLength) {
+    return withoutQuery;
+  }
+
+  return `${withoutQuery.slice(0, maxLength - 3).trimEnd()}...`;
+}
+
+function stripUrlQueryAndHash(value: string): string {
+  try {
+    const url = new URL(value);
+    url.search = '';
+    url.hash = '';
+
+    return url.toString();
+  } catch {
+    return value;
+  }
 }
 
 function mergeConflicts(conflicts: string[], evidence: EvidenceReview['evidence']): string[] {

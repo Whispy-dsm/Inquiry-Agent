@@ -236,6 +236,7 @@ function renderEvidenceReview(review: EvidenceReview | undefined, expanded: bool
     `Confidence: ${review.confidence}`,
     `Needs check: ${singleLine(review.needsCheck, 320)}`,
     `Conflicts: ${singleLine(review.conflicts.length > 0 ? review.conflicts.join(' / ') : 'none', 260)}`,
+    'Details: see server log event internal_evidence.review.collected',
     'Evidence:',
   ];
   const lines = [...header];
@@ -275,17 +276,9 @@ function renderEvidenceReviewSummary(review: EvidenceReview): string {
 }
 
 function renderEvidenceItem(item: EvidenceItem): string {
-  const scoreParts = [
-    item.retrievalSignals?.join('+'),
-    item.score === undefined ? undefined : `score=${formatScore(item.score)}`,
-    item.semanticScore === undefined ? undefined : `semantic=${formatScore(item.semanticScore)}`,
-    item.circuitScore === undefined ? undefined : `circuit=${formatScore(item.circuitScore)}`,
-  ].filter(Boolean);
-
   return [
-    `- ${item.sourceType} [${item.authority}, ${item.status}] ${item.source}`,
-    scoreParts.length > 0 ? `  signals: ${scoreParts.join(', ')}` : undefined,
-    `  ${singleLine(item.snippet, 160)}`,
+    `- ${item.sourceType} [${item.authority}, ${item.status}] ${formatDiscordEvidenceSource(item.source)}`,
+    item.title ? `  ${singleLine(item.title, 120)}` : undefined,
   ].filter((line): line is string => typeof line === 'string').join('\n');
 }
 
@@ -299,8 +292,12 @@ function singleLine(value: string, maxLength: number): string {
   return `${normalized.slice(0, maxLength - 3).trimEnd()}...`;
 }
 
-function formatScore(score: number): string {
-  return score.toFixed(3);
+function formatDiscordEvidenceSource(source: string): string {
+  if (/^https?:\/\//i.test(source)) {
+    return `<${source}>`;
+  }
+
+  return source;
 }
 
 type CachedInquiryDetails = Pick<Inquiry, 'inquiryId' | 'message' | 'deviceInfo'>;

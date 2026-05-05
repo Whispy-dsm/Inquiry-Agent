@@ -20,7 +20,7 @@ import { InquiryWorkflow } from './workflow/inquiryWorkflow.js';
 type LoggerLike = {
   debug(payload: unknown, message?: string): void;
   warn(payload: unknown, message?: string): void;
-  info(message: string): void;
+  info(payload: unknown, message?: string): void;
   error(payload: unknown, message?: string): void;
 };
 
@@ -200,7 +200,7 @@ export async function startWorker(
     ? createKnowledgeCircuitFromEnv(env)
     : undefined;
   const internalEvidenceProvider = createInternalEvidenceProviderFromEnv(env, knowledgeCircuit, logger);
-  const draftGeneratorOptions = internalEvidenceProvider ? { internalEvidenceProvider } : {};
+  const draftGeneratorOptions = internalEvidenceProvider ? { internalEvidenceProvider, logger } : {};
   const draftGenerator = new GeminiDraftGenerator(
     env.GEMINI_API_KEY,
     env.GEMINI_MODEL,

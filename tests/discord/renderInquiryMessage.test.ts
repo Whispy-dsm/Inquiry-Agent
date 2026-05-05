@@ -110,9 +110,35 @@ describe('renderInquiryMessage', () => {
     // Assert
     expect(result.content).toContain('내부 근거 검토');
     expect(result.content).toContain('backend [implementation-behavior, found] auth/session.ts');
-    expect(result.content).toContain('signals: keyword+ast+embedding, score=14.000, semantic=0.930');
+    expect(result.content).not.toContain('signals: keyword+ast+embedding');
+    expect(result.content).not.toContain('Session tokens are issued per login.');
+    expect(result.content).toContain('Details: see server log event internal_evidence.review.collected');
     expect(result.content).toContain('Needs check: 고객에게 확정하기 전 정책 확인이 필요합니다.');
     expect(JSON.stringify(result.components)).toContain(`evidenceClose:${baseInquiry.inquiryId}`);
+  });
+
+  it('should suppress Discord embeds for HTTP evidence source links', () => {
+    // Arrange
+    const source = 'https://github.com/Whispy-dsm/Whispy_Flutter/blob/main/lib/edit_profile_screen.dart';
+
+    // Act
+    const result = renderInquiryMessage({
+      inquiry: baseInquiry,
+      draft: {
+        ...evidenceDraft,
+        evidenceReview: {
+          ...evidenceDraft.evidenceReview,
+          evidence: [{
+            ...evidenceDraft.evidenceReview.evidence[0]!,
+            source,
+          }],
+        },
+      },
+      evidenceExpanded: true,
+    });
+
+    // Assert
+    expect(result.content).toContain(`<${source}>`);
   });
 
   it('should render every internal evidence item when expanded', () => {

@@ -478,6 +478,89 @@ describe('GeminiDraftGenerator', () => {
     expect(prompt).toContain('[token]');
   });
 
+  it('should log full internal evidence details with sanitized snippets', async () => {
+    // Arrange
+    const contextProvider = {
+      findRelevantContext: vi.fn().mockResolvedValue([]),
+    };
+    const logger = {
+      info: vi.fn(),
+    };
+    const internalEvidenceProvider = {
+      findEvidence: vi.fn().mockResolvedValue([
+        {
+          sourceType: 'flutter',
+          authority: 'client-behavior',
+          title: 'profile editor',
+          source: 'https://github.com/Whispy-dsm/Whispy_Flutter/blob/main/lib/edit_profile_screen.dart',
+          snippet: 'Upload code mentions private.customer@example.com and token abcdef1234567890abcdef12.',
+          status: 'found',
+          retrievalSignals: ['external', 'keyword', 'symbol'],
+          score: 466,
+          circuitScore: 1,
+        },
+      ]),
+    };
+    const fakeClient = {
+      models: {
+        generateContent: vi.fn()
+          .mockResolvedValueOnce({
+            text: JSON.stringify({
+              route: 'need_multi_source_evidence',
+              reason: 'Profile image recovery behavior should be checked.',
+              requestedSources: ['backend', 'flutter', 'notion'],
+              confidence: 'medium',
+              needsCheck: 'Confirm profile image update and retention behavior.',
+              conflicts: [],
+            }),
+          })
+          .mockResolvedValueOnce({
+            text: JSON.stringify({
+              summary: '프로필 사진 복구 문의',
+              subject: '프로필 사진 복구 관련 안내',
+              body: '담당자가 확인한 뒤 안내드리겠습니다.',
+              missingInformation: [],
+            }),
+          }),
+      },
+    };
+    const target = new GeminiDraftGenerator(
+      'gemini-key',
+      'gemini-2.5-flash-lite',
+      contextProvider as never,
+      fakeClient as never,
+      {
+        internalEvidenceProvider: internalEvidenceProvider as never,
+        logger,
+      },
+    );
+
+    // Act
+    await target.generateDraft(baseInquiry);
+
+    // Assert
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'internal_evidence.review.collected',
+        inquiryId: baseInquiry.inquiryId,
+        route: 'need_multi_source_evidence',
+        evidence: [
+          expect.objectContaining({
+            sourceType: 'flutter',
+            status: 'found',
+            source: 'https://github.com/Whispy-dsm/Whispy_Flutter/blob/main/lib/edit_profile_screen.dart',
+            retrievalSignals: ['external', 'keyword', 'symbol'],
+            snippet: expect.stringContaining('[email]'),
+          }),
+        ],
+      }),
+      'Internal evidence review collected',
+    );
+    const payload = JSON.stringify(logger.info.mock.calls[0]?.[0]);
+    expect(payload).not.toContain('private.customer@example.com');
+    expect(payload).not.toContain('abcdef1234567890abcdef12');
+  });
+
   it('should cross-check evidence when route JSON is malformed', async () => {
     // Arrange
     const contextProvider = {
