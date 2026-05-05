@@ -34,6 +34,8 @@ GitHub query terms are privacy-filtered. The worker never forwards raw customer 
 
 For GitHub-only code evidence, the worker follows the code-search result's contents API URL, fetches the matched file body, and runs in-memory code analysis. GitHub evidence can show `external+ast` for TypeScript/JavaScript when the TypeScript compiler is available in the runtime image, or `external+symbol` for heuristic fallback/Dart-style symbol extraction. Fetched files are bounded by size before decoding.
 
+After evidence collection, the worker writes a structured `internal_evidence.review.collected` server log with the full evidence list, source references, statuses, retrieval signals, scores, and shortened sanitized snippets. Customer emails and token-like values are masked in that log. Discord review cards intentionally show only a compact evidence list; use the server log when reviewers need the omitted snippet and signal details.
+
 ### Notion Evidence
 
 Live Notion evidence search is opt-in:
