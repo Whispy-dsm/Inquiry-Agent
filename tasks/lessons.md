@@ -55,6 +55,8 @@
 - Rule: After merging an issue or PR scope in this repository, create the next `v{MAJOR}.{MINOR}.{PATCH}` tag on the merge commit, push it to origin, and verify the remote tag exists before reporting completion.
 - Correction: I committed behavior changes, docs, repository hygiene, and task memory together in one broad commit.
 - Rule: Before committing, inspect the staged diff and split commits by reviewable concern: behavior with tests, operator docs, repository hygiene, and agent memory/task logs should be separate commits unless they are inseparable.
+- Correction: I amended an issue-linked commit to an English non-project subject after being told the commit convention was wrong.
+- Rule: When fixing commit messages in this repository, do not fall back to English Lore-only subjects; use `type ( #issue ) : 한글 설명` exactly, and preserve Lore-style rationale in the body/trailers.
 - Rule: For incorrectly entered records, say the handling method requires 담당자 확인.
 
 ## Keep the decision gate broader than the first validation slice

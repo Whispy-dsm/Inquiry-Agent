@@ -1,5 +1,31 @@
 # Convention Import Todo
 
+## Internal Evidence Logging And Discord Summary
+
+### Plan
+
+- [x] Inspect current evidence rendering and runtime logging boundaries.
+- [x] Add regression tests for full sanitized evidence logging and a simpler Discord evidence summary.
+- [x] Implement server-side internal evidence detail logging without customer text or tokens.
+- [x] Simplify Discord evidence display to show source/status counts and top source links instead of long snippets by default.
+- [x] Run focused tests, typecheck, build, and diff hygiene.
+
+### Review
+
+- Changed files: `src/ai/geminiDraftGenerator.ts`, `src/discord/renderInquiryMessage.ts`, `src/worker.ts`, `docs/runbook.md`, `tests/ai/geminiDraftRuntime.test.ts`, `tests/discord/renderInquiryMessage.test.ts`, `tasks/todo.md`.
+- Related issue: https://github.com/Whispy-dsm/Inquiry-Agent/issues/18
+- Root cause: Discord expanded evidence was the only practical place to inspect snippets/signals, so long GitHub/Notion evidence made review cards noisy and triggered link previews; the worker did not log a complete post-collection evidence packet.
+- Simplifications made: reused the existing worker logger and evidence review object instead of adding storage; kept Discord evidence as source/status/title only and suppressed HTTP link embeds with Discord angle-link formatting.
+- Verification:
+  - `npm run test -- tests/ai/geminiDraftRuntime.test.ts tests/discord/renderInquiryMessage.test.ts` -> 2 files / 20 tests passed.
+  - `npm run test -- tests/discord/interactionHandlers.test.ts tests/worker.test.ts` -> 2 files / 18 tests passed.
+  - `npm run typecheck` -> passed.
+  - `npm run test` -> 18 files / 135 tests passed.
+  - `npm run build` -> passed.
+  - `git diff --check` -> passed with CRLF warnings only.
+  - `npm run lint` -> blocked by existing missing ESLint v9 `eslint.config.*`.
+- Remaining risks: server logs now include shortened internal evidence snippets, with emails and token-like values masked; operators should still treat these logs as internal-only because source paths and policy/code snippets can be sensitive.
+
 ## Internal Evidence Provider HTTP Logging
 
 ### Plan
