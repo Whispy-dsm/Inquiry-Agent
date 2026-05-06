@@ -48,6 +48,7 @@ const envSchema = z.object({
   INTERNAL_EVIDENCE_GITHUB_API_BASE_URL: optionalStringSchema,
   INTERNAL_EVIDENCE_GITHUB_BACKEND_REPOS: optionalStringSchema,
   INTERNAL_EVIDENCE_GITHUB_FLUTTER_REPOS: optionalStringSchema,
+  INTERNAL_EVIDENCE_GITHUB_MAX_FETCHED_FILE_BYTES: z.coerce.number().int().positive().default(1_000_000),
   ENABLE_INTERNAL_EVIDENCE_NOTION_SEARCH: booleanStringSchema.default(false),
   INTERNAL_EVIDENCE_NOTION_TOKEN: optionalStringSchema,
   INTERNAL_EVIDENCE_NOTION_API_BASE_URL: optionalStringSchema,

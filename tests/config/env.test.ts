@@ -24,6 +24,7 @@ describe('loadEnv', () => {
       INTERNAL_EVIDENCE_GITHUB_API_BASE_URL: 'https://github.example/api',
       INTERNAL_EVIDENCE_GITHUB_BACKEND_REPOS: 'whispy/backend',
       INTERNAL_EVIDENCE_GITHUB_FLUTTER_REPOS: 'whispy/flutter',
+      INTERNAL_EVIDENCE_GITHUB_MAX_FETCHED_FILE_BYTES: '2000000',
       ENABLE_INTERNAL_EVIDENCE_NOTION_SEARCH: 'true',
       INTERNAL_EVIDENCE_NOTION_TOKEN: 'notion-token',
       INTERNAL_EVIDENCE_NOTION_API_BASE_URL: 'https://notion.example',
@@ -64,6 +65,7 @@ describe('loadEnv', () => {
     expect(result.INTERNAL_EVIDENCE_GITHUB_API_BASE_URL).toBe('https://github.example/api');
     expect(result.INTERNAL_EVIDENCE_GITHUB_BACKEND_REPOS).toBe('whispy/backend');
     expect(result.INTERNAL_EVIDENCE_GITHUB_FLUTTER_REPOS).toBe('whispy/flutter');
+    expect(result.INTERNAL_EVIDENCE_GITHUB_MAX_FETCHED_FILE_BYTES).toBe(2_000_000);
     expect(result.ENABLE_INTERNAL_EVIDENCE_NOTION_SEARCH).toBe(true);
     expect(result.INTERNAL_EVIDENCE_NOTION_TOKEN).toBe('notion-token');
     expect(result.INTERNAL_EVIDENCE_NOTION_API_BASE_URL).toBe('https://notion.example');
@@ -128,6 +130,7 @@ describe('loadEnv', () => {
     expect(result.ENABLE_FALLBACK_POLLING).toBe(false);
     expect(result.ENABLE_INTERNAL_EVIDENCE_ROUTER).toBe(false);
     expect(result.ENABLE_INTERNAL_EVIDENCE_GITHUB_SEARCH).toBe(false);
+    expect(result.INTERNAL_EVIDENCE_GITHUB_MAX_FETCHED_FILE_BYTES).toBe(1_000_000);
     expect(result.ENABLE_INTERNAL_EVIDENCE_NOTION_SEARCH).toBe(false);
     expect(result.INTERNAL_EVIDENCE_NOTION_VERSION).toBe('2026-03-11');
     expect(result.ENABLE_INTERNAL_EVIDENCE_EMBEDDING_RERANK).toBe(false);
@@ -212,6 +215,7 @@ describe('loadEnv', () => {
       expect(template).not.toContain('ENABLE_FALLBACK_POLLING: ${ENABLE_FALLBACK_POLLING:-true}');
       expect(template).toContain('ENABLE_INTERNAL_EVIDENCE_ROUTER: ${ENABLE_INTERNAL_EVIDENCE_ROUTER:-false}');
       expect(template).toContain('ENABLE_INTERNAL_EVIDENCE_GITHUB_SEARCH: ${ENABLE_INTERNAL_EVIDENCE_GITHUB_SEARCH:-false}');
+      expect(template).toContain('INTERNAL_EVIDENCE_GITHUB_MAX_FETCHED_FILE_BYTES: ${INTERNAL_EVIDENCE_GITHUB_MAX_FETCHED_FILE_BYTES:-1000000}');
       expect(template).toContain('ENABLE_INTERNAL_EVIDENCE_NOTION_SEARCH: ${ENABLE_INTERNAL_EVIDENCE_NOTION_SEARCH:-false}');
       expect(template).toContain('INTERNAL_EVIDENCE_NOTION_VERSION: ${INTERNAL_EVIDENCE_NOTION_VERSION:-2026-03-11}');
       expect(template).not.toContain('INTERNAL_EVIDENCE_BACKEND_PATH');
