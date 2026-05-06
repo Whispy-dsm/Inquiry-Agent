@@ -167,6 +167,68 @@ describe('GitHubCodeSearchEvidenceSource', () => {
     }));
   }, 15_000);
 
+  it('should analyze service-sized GitHub files above the old 120KB limit', async () => {
+    // Arrange
+    const content = [
+      'public class FocusSessionService {',
+      '  public String concurrentLoginPolicy() {',
+      '    return "session policy";',
+      '  }',
+      '}',
+      `/* ${'service implementation filler '.repeat(5_000)} */`,
+    ].join('\n');
+    expect(Buffer.byteLength(content, 'utf8')).toBeGreaterThan(120_000);
+    expect(Buffer.byteLength(content, 'utf8')).toBeLessThan(1_000_000);
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          items: [
+            {
+              path: 'src/main/java/whispy/domain/focus/application/service/FocusSessionService.java',
+              url: 'https://github.example/api/repos/whispy/backend/contents/src/main/java/whispy/domain/focus/application/service/FocusSessionService.java',
+              html_url: 'https://github.example/whispy/backend/blob/main/src/main/java/whispy/domain/focus/application/service/FocusSessionService.java',
+              repository: { full_name: 'whispy/backend' },
+              text_matches: [{ fragment: 'class FocusSessionService' }],
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          type: 'file',
+          encoding: 'base64',
+          size: Buffer.byteLength(content, 'utf8'),
+          content: Buffer.from(content, 'utf8').toString('base64'),
+        }),
+      });
+    const target = new GitHubCodeSearchEvidenceSource(
+      'backend',
+      [{ owner: 'whispy', repo: 'backend' }],
+      'implementation-behavior',
+      {
+        apiBaseUrl: 'https://github.example/api',
+        fetchFn,
+      },
+    );
+
+    // Act
+    const result = await target.findEvidence(
+      { ...baseInquiry, message: 'concurrent login policy' },
+      routeDecision,
+    );
+
+    // Assert
+    expect(result[0]).toEqual(expect.objectContaining({
+      status: 'found',
+      snippet: expect.stringContaining('FocusSessionService'),
+      retrievalSignals: expect.arrayContaining(['external', 'keyword']),
+    }));
+  }, 15_000);
+
   it('should label fetched GitHub content as symbol when compiler AST is disabled', async () => {
     // Arrange
     const content = 'export function concurrentLoginPolicy() { return true; }';

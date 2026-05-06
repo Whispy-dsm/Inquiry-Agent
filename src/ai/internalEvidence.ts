@@ -134,6 +134,7 @@ type CompositeInternalEvidenceProviderOptions = {
 };
 
 type EvidenceProviderMap = Partial<Record<InternalEvidenceSourceType, EvidenceSourceProvider | EvidenceSourceProvider[]>>;
+const defaultGitHubMaxFetchedFileBytes = 1_000_000;
 
 /**
  * 설정된 GitHub 저장소를 읽기 전용 코드 검색 API로 조회해 구현 근거를 수집합니다.
@@ -161,7 +162,7 @@ export class GitHubCodeSearchEvidenceSource implements EvidenceSourceProvider {
     this.fetchFn = options.fetchFn ?? ((input, init) => fetch(input, init));
     this.maxResults = options.maxResults ?? 3;
     this.maxQueryTerms = options.maxQueryTerms ?? 8;
-    this.maxFetchedFileBytes = options.maxFetchedFileBytes ?? 120_000;
+    this.maxFetchedFileBytes = options.maxFetchedFileBytes ?? defaultGitHubMaxFetchedFileBytes;
     this.maxSnippetLength = options.maxSnippetLength ?? 700;
     this.useTypeScriptCompiler = options.useTypeScriptCompiler ?? true;
     this.logger = options.logger;
@@ -962,6 +963,7 @@ export type GitHubEvidenceOptions = {
   apiBaseUrl?: string | undefined;
   backendRepos?: string | undefined;
   flutterRepos?: string | undefined;
+  maxFetchedFileBytes?: number | undefined;
   fetchFn?: FetchLike;
   logger?: EvidenceLogger;
 };
@@ -1049,6 +1051,10 @@ function addGitHubProvider(
 
   if (options.fetchFn) {
     providerOptions.fetchFn = options.fetchFn;
+  }
+
+  if (options.maxFetchedFileBytes !== undefined) {
+    providerOptions.maxFetchedFileBytes = options.maxFetchedFileBytes;
   }
 
   const resolvedLogger = options.logger ?? logger;
