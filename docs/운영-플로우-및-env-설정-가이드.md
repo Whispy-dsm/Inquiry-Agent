@@ -35,6 +35,8 @@ INTERNAL_EVIDENCE_GITHUB_TOKEN=replace-with-github-read-token
 INTERNAL_EVIDENCE_GITHUB_API_BASE_URL=
 INTERNAL_EVIDENCE_GITHUB_BACKEND_REPOS=owner/backend-repo
 INTERNAL_EVIDENCE_GITHUB_FLUTTER_REPOS=owner/flutter-repo
+INTERNAL_EVIDENCE_GITHUB_MAX_RESULTS=20
+INTERNAL_EVIDENCE_GITHUB_MAX_QUERY_TERMS=10
 INTERNAL_EVIDENCE_GITHUB_MAX_FETCHED_FILE_BYTES=1000000
 
 ENABLE_INTERNAL_EVIDENCE_NOTION_SEARCH=true
@@ -42,6 +44,9 @@ INTERNAL_EVIDENCE_NOTION_TOKEN=replace-with-notion-integration-token
 INTERNAL_EVIDENCE_NOTION_API_BASE_URL=
 INTERNAL_EVIDENCE_NOTION_VERSION=2026-03-11
 INTERNAL_EVIDENCE_NOTION_PAGE_IDS=page-id-1,page-id-2
+INTERNAL_EVIDENCE_NOTION_MAX_RESULTS=10
+INTERNAL_EVIDENCE_NOTION_MAX_SEARCH_TERMS=10
+INTERNAL_EVIDENCE_NOTION_MAX_FETCHED_BLOCKS=300
 
 ENABLE_INTERNAL_EVIDENCE_EMBEDDING_RERANK=false
 INTERNAL_EVIDENCE_EMBEDDING_MODEL=text-embedding-004
@@ -100,6 +105,18 @@ DRY_RUN_EMAIL=true
 - Flutter 검색 대상 repo 목록이다.
 - 쉼표로 구분한 `owner/repo` 형식이다.
 
+`INTERNAL_EVIDENCE_GITHUB_MAX_RESULTS`
+
+- repo별 GitHub code search 후보 수다.
+- 기본값은 `20`이다.
+- 값을 올리면 관련 파일을 놓칠 가능성은 줄지만 GitHub API 사용량과 노이즈가 늘 수 있다.
+
+`INTERNAL_EVIDENCE_GITHUB_MAX_QUERY_TERMS`
+
+- GitHub code search 쿼리에 포함할 safe taxonomy term 수다.
+- 기본값은 `10`이다.
+- 너무 크게 올리면 검색이 과하게 좁아질 수 있으므로 결과 수를 먼저 조정한다.
+
 `INTERNAL_EVIDENCE_GITHUB_MAX_FETCHED_FILE_BYTES`
 
 - GitHub code search 결과로 잡힌 파일 본문을 추가로 가져와 메모리에서 분석할 때의 최대 파일 크기다.
@@ -139,6 +156,22 @@ GitHub query에는 고객 문의 원문, 이름, 이메일, 계정 ID 같은 raw
 - 정책/기능 정의/FAQ 페이지 ID를 쉼표로 넣는다.
 - 값이 있으면 `/v1/search`에 의존하지 않고 지정한 페이지를 직접 조회한다.
 - 값이 없으면 safe taxonomy query로 `/v1/search`를 호출한 뒤 검색된 페이지의 block children을 읽는다.
+
+`INTERNAL_EVIDENCE_NOTION_MAX_RESULTS`
+
+- Notion 검색 또는 직접 page ID 조회에서 후보 page 수를 제한한다.
+- 기본값은 `10`이다.
+
+`INTERNAL_EVIDENCE_NOTION_MAX_SEARCH_TERMS`
+
+- Notion `/v1/search` query에 넣을 safe taxonomy term 수다.
+- 기본값은 `10`이다.
+
+`INTERNAL_EVIDENCE_NOTION_MAX_FETCHED_BLOCKS`
+
+- page children을 따라가며 읽을 Notion block 예산이다.
+- 기본값은 `300`이다.
+- 긴 문서나 toggle 하위 블록이 많은 문서에서는 높이면 근거 누락을 줄일 수 있다.
 
 Notion API provider는 페이지 본문을 로컬에 저장하지 않는다. API 응답을 메모리에서 점수화하고, 실패하면 worker를 죽이지 않고 `unavailable` evidence로 표시한다.
 
