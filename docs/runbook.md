@@ -27,12 +27,13 @@ GitHub code search is opt-in:
 - `INTERNAL_EVIDENCE_GITHUB_API_BASE_URL`
 - `INTERNAL_EVIDENCE_GITHUB_BACKEND_REPOS`
 - `INTERNAL_EVIDENCE_GITHUB_FLUTTER_REPOS`
+- `INTERNAL_EVIDENCE_GITHUB_MAX_FETCHED_FILE_BYTES=1000000`
 
 Repository lists are comma-separated `owner/repo` values. GitHub search only runs for source types requested by the AI route decision. If GitHub is rate-limited, unavailable, or misconfigured, the review card shows `unavailable` evidence instead of failing the worker.
 
 GitHub query terms are privacy-filtered. The worker never forwards raw customer message tokens, names, emails, account IDs, or phone-like strings to GitHub. It maps the routed inquiry to a fixed product/domain taxonomy such as `auth`, `login`, `session`, `payment`, `notification`, or `policy`.
 
-For GitHub-only code evidence, the worker follows the code-search result's contents API URL, fetches the matched file body, and runs in-memory code analysis. GitHub evidence can show `external+ast` for TypeScript/JavaScript when the TypeScript compiler is available in the runtime image, or `external+symbol` for heuristic fallback/Dart-style symbol extraction. Fetched files are bounded by size before decoding.
+For GitHub-only code evidence, the worker follows the code-search result's contents API URL, fetches the matched file body, and runs in-memory code analysis. GitHub evidence can show `external+ast` for TypeScript/JavaScript when the TypeScript compiler is available in the runtime image, or `external+symbol` for heuristic fallback/Dart-style symbol extraction. Fetched files are bounded by `INTERNAL_EVIDENCE_GITHUB_MAX_FETCHED_FILE_BYTES` before decoding; the default is 1,000,000 bytes so typical service files can be inspected without pulling very large generated files into memory.
 
 After evidence collection, the worker writes a structured `internal_evidence.review.collected` server log with the full evidence list, source references, statuses, retrieval signals, scores, and shortened sanitized snippets. Customer emails and token-like values are masked in that log. Discord review cards intentionally show only a compact evidence list; use the server log when reviewers need the omitted snippet and signal details.
 

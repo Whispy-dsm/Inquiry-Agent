@@ -35,6 +35,7 @@ INTERNAL_EVIDENCE_GITHUB_TOKEN=replace-with-github-read-token
 INTERNAL_EVIDENCE_GITHUB_API_BASE_URL=
 INTERNAL_EVIDENCE_GITHUB_BACKEND_REPOS=owner/backend-repo
 INTERNAL_EVIDENCE_GITHUB_FLUTTER_REPOS=owner/flutter-repo
+INTERNAL_EVIDENCE_GITHUB_MAX_FETCHED_FILE_BYTES=1000000
 
 ENABLE_INTERNAL_EVIDENCE_NOTION_SEARCH=true
 INTERNAL_EVIDENCE_NOTION_TOKEN=replace-with-notion-integration-token
@@ -98,6 +99,13 @@ DRY_RUN_EMAIL=true
 
 - Flutter 검색 대상 repo 목록이다.
 - 쉼표로 구분한 `owner/repo` 형식이다.
+
+`INTERNAL_EVIDENCE_GITHUB_MAX_FETCHED_FILE_BYTES`
+
+- GitHub code search 결과로 잡힌 파일 본문을 추가로 가져와 메모리에서 분석할 때의 최대 파일 크기다.
+- 기본값은 `1000000` bytes다.
+- 일반적인 Backend service 파일을 분석할 수 있도록 120KB보다 크게 둔다.
+- 너무 크게 올리면 큰 generated file이나 bundle을 가져와 메모리와 API 사용량이 늘 수 있다.
 
 GitHub query에는 고객 문의 원문, 이름, 이메일, 계정 ID 같은 raw token을 넣지 않는다. 라우터 결과를 `auth`, `login`, `session`, `policy` 같은 고정 taxonomy로 바꿔 검색한다.
 
