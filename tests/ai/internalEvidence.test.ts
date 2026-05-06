@@ -92,12 +92,47 @@ describe('GitHubCodeSearchEvidenceSource', () => {
         }),
       }),
     );
+    expect(new URL(String(fetchFn.mock.calls[0]?.[0])).searchParams.get('per_page')).toBe('20');
     expect(result[0]).toEqual(expect.objectContaining({
       sourceType: 'backend',
       source: 'https://github.example/whispy/backend/blob/main/src/auth/session.ts',
       status: 'found',
       retrievalSignals: expect.arrayContaining(['external', 'keyword']),
     }));
+  });
+
+  it('should apply configured GitHub result and query-term limits', async () => {
+    // Arrange
+    const fetchFn = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ items: [] }),
+    });
+    const target = new GitHubCodeSearchEvidenceSource(
+      'backend',
+      [{ owner: 'whispy', repo: 'backend' }],
+      'implementation-behavior',
+      {
+        apiBaseUrl: 'https://github.example/api',
+        fetchFn,
+        maxResults: 7,
+        maxQueryTerms: 4,
+      },
+    );
+
+    // Act
+    await target.findEvidence(
+      { ...baseInquiry, message: '동시 로그인 계정 알림 기록 결제 삭제 보안 권한 화면' },
+      routeDecision,
+    );
+
+    // Assert
+    const url = new URL(String(fetchFn.mock.calls[0]?.[0]));
+    const query = decodeURIComponent(url.searchParams.get('q') ?? '');
+    const queryTerms = query.split(/\s+/).filter((term) => !term.startsWith('repo:'));
+
+    expect(url.searchParams.get('per_page')).toBe('7');
+    expect(queryTerms).toHaveLength(4);
   });
 
   it('should fetch matched GitHub file content and add AST signals in memory', async () => {
@@ -1100,6 +1135,77 @@ describe('NotionApiEvidenceSource', () => {
       retrievalSignals: expect.arrayContaining(['external', 'keyword']),
       snippet: expect.stringContaining('Concurrent login'),
       circuitContentHash: expect.any(String),
+    }));
+  });
+
+  it('should apply configured Notion result and search-term limits', async () => {
+    // Arrange
+    const fetchFn = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ results: [] }),
+    });
+    const target = new NotionApiEvidenceSource({
+      token: 'notion-token',
+      apiBaseUrl: 'https://notion.example',
+      fetchFn,
+      maxResults: 8,
+      maxSearchTerms: 3,
+    });
+
+    // Act
+    await target.findEvidence(
+      { ...baseInquiry, message: '동시 로그인 계정 알림 기록 결제 삭제 보안 권한 화면' },
+      notionRouteDecision,
+    );
+
+    // Assert
+    const body = JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body));
+
+    expect(body.page_size).toBe(8);
+    expect(String(body.query).split(/\s+/)).toHaveLength(3);
+  });
+
+  it('should stop paginated Notion block reads at the configured block budget', async () => {
+    // Arrange
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => notionPage('page-1', 'Long Login Policy', 'https://notion.example/long-login-policy'),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          has_more: true,
+          next_cursor: 'cursor-2',
+          results: [
+            notionParagraph('block-1', 'Concurrent login policy appears on the first page.'),
+          ],
+        }),
+      });
+    const target = new NotionApiEvidenceSource({
+      token: 'notion-token',
+      apiBaseUrl: 'https://notion.example',
+      pageIds: 'page-1',
+      fetchFn,
+      maxFetchedBlocks: 1,
+    });
+
+    // Act
+    const result = await target.findEvidence(
+      { ...baseInquiry, message: 'Can users use concurrent login?' },
+      notionRouteDecision,
+    );
+
+    // Assert
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    expect(String(fetchFn.mock.calls[1]?.[0])).not.toContain('start_cursor=cursor-2');
+    expect(result[0]).toEqual(expect.objectContaining({
+      sourceType: 'notion',
+      status: 'found',
+      snippet: expect.stringContaining('Concurrent login'),
     }));
   });
 

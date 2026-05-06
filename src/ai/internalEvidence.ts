@@ -135,6 +135,11 @@ type CompositeInternalEvidenceProviderOptions = {
 
 type EvidenceProviderMap = Partial<Record<InternalEvidenceSourceType, EvidenceSourceProvider | EvidenceSourceProvider[]>>;
 const defaultGitHubMaxFetchedFileBytes = 1_000_000;
+const defaultGitHubMaxResults = 20;
+const defaultGitHubMaxQueryTerms = 10;
+const defaultNotionMaxResults = 10;
+const defaultNotionMaxSearchTerms = 10;
+const defaultNotionMaxFetchedBlocks = 300;
 
 /**
  * 설정된 GitHub 저장소를 읽기 전용 코드 검색 API로 조회해 구현 근거를 수집합니다.
@@ -160,8 +165,8 @@ export class GitHubCodeSearchEvidenceSource implements EvidenceSourceProvider {
   ) {
     this.apiBaseUrl = (options.apiBaseUrl ?? 'https://api.github.com').replace(/\/$/, '');
     this.fetchFn = options.fetchFn ?? ((input, init) => fetch(input, init));
-    this.maxResults = options.maxResults ?? 3;
-    this.maxQueryTerms = options.maxQueryTerms ?? 8;
+    this.maxResults = options.maxResults ?? defaultGitHubMaxResults;
+    this.maxQueryTerms = options.maxQueryTerms ?? defaultGitHubMaxQueryTerms;
     this.maxFetchedFileBytes = options.maxFetchedFileBytes ?? defaultGitHubMaxFetchedFileBytes;
     this.maxSnippetLength = options.maxSnippetLength ?? 700;
     this.useTypeScriptCompiler = options.useTypeScriptCompiler ?? true;
@@ -565,9 +570,9 @@ export class NotionApiEvidenceSource implements EvidenceSourceProvider {
     this.notionVersion = options.notionVersion ?? '2026-03-11';
     this.pageIds = parseCsv(options.pageIds);
     this.fetchFn = options.fetchFn ?? ((input, init) => fetch(input, init));
-    this.maxResults = options.maxResults ?? 5;
-    this.maxSearchTerms = options.maxSearchTerms ?? 6;
-    this.maxFetchedBlocks = options.maxFetchedBlocks ?? 120;
+    this.maxResults = options.maxResults ?? defaultNotionMaxResults;
+    this.maxSearchTerms = options.maxSearchTerms ?? defaultNotionMaxSearchTerms;
+    this.maxFetchedBlocks = options.maxFetchedBlocks ?? defaultNotionMaxFetchedBlocks;
     this.maxSnippetLength = options.maxSnippetLength ?? 700;
     this.logger = options.logger;
   }
@@ -963,6 +968,8 @@ export type GitHubEvidenceOptions = {
   apiBaseUrl?: string | undefined;
   backendRepos?: string | undefined;
   flutterRepos?: string | undefined;
+  maxResults?: number | undefined;
+  maxQueryTerms?: number | undefined;
   maxFetchedFileBytes?: number | undefined;
   fetchFn?: FetchLike;
   logger?: EvidenceLogger;
@@ -975,6 +982,9 @@ export type NotionEvidenceOptions = {
   apiBaseUrl?: string | undefined;
   notionVersion?: string | undefined;
   pageIds?: string | undefined;
+  maxResults?: number | undefined;
+  maxSearchTerms?: number | undefined;
+  maxFetchedBlocks?: number | undefined;
   fetchFn?: FetchLike;
   logger?: EvidenceLogger;
 };
@@ -1053,6 +1063,14 @@ function addGitHubProvider(
     providerOptions.fetchFn = options.fetchFn;
   }
 
+  if (options.maxResults !== undefined) {
+    providerOptions.maxResults = options.maxResults;
+  }
+
+  if (options.maxQueryTerms !== undefined) {
+    providerOptions.maxQueryTerms = options.maxQueryTerms;
+  }
+
   if (options.maxFetchedFileBytes !== undefined) {
     providerOptions.maxFetchedFileBytes = options.maxFetchedFileBytes;
   }
@@ -1098,6 +1116,18 @@ function addNotionProvider(
 
   if (options.fetchFn) {
     providerOptions.fetchFn = options.fetchFn;
+  }
+
+  if (options.maxResults !== undefined) {
+    providerOptions.maxResults = options.maxResults;
+  }
+
+  if (options.maxSearchTerms !== undefined) {
+    providerOptions.maxSearchTerms = options.maxSearchTerms;
+  }
+
+  if (options.maxFetchedBlocks !== undefined) {
+    providerOptions.maxFetchedBlocks = options.maxFetchedBlocks;
   }
 
   const resolvedLogger = options.logger ?? logger;
