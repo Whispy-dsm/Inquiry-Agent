@@ -57,6 +57,8 @@
 - Rule: Before committing, inspect the staged diff and split commits by reviewable concern: behavior with tests, operator docs, repository hygiene, and agent memory/task logs should be separate commits unless they are inseparable.
 - Correction: I amended an issue-linked commit to an English non-project subject after being told the commit convention was wrong.
 - Rule: When fixing commit messages in this repository, do not fall back to English Lore-only subjects; use `type ( #issue ) : 한글 설명` exactly, and preserve Lore-style rationale in the body/trailers.
+- Correction: 사용자가 이슈/커밋 작업이 한국어와 저장소 커밋 분리 컨벤션을 지키지 않았다고 재차 정정했다.
+- Rule: 이 저장소에서 이슈와 커밋을 만들 때는 GitHub 이슈 제목, 커밋 제목, 커밋 본문 설명을 한국어로 작성하고, 구현+테스트, 운영 문서, 작업 로그/lesson을 별도 커밋으로 분리한다.
 - Rule: For incorrectly entered records, say the handling method requires 담당자 확인.
 
 ## Keep the decision gate broader than the first validation slice

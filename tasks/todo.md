@@ -1389,3 +1389,44 @@ Related issue: #16
   - `git diff --check` -> passed with CRLF warnings only.
   - `npm run lint` -> blocked by existing missing ESLint v9 `eslint.config.*`.
 - Remaining risks: live GitHub and Notion search can still return unrelated candidates, but candidates that only match weak profile/generic terms should now be downgraded to empty instead of shown as found evidence.
+
+## Inquiry Agent System Policy Guide
+
+### Plan
+
+- [x] Review existing runbook, RAG policy, workflow, and evidence-router behavior.
+- [x] Add a Korean Markdown guide explaining the system flow, review policy, evidence policy, and operational states.
+- [x] Verify the documentation diff and record remaining risks.
+
+### Review
+
+- Changed files: `docs/inquiry-agent-system-policy-guide.md`, `tasks/todo.md`.
+- Simplifications made: kept the guide as a single operator-facing overview that links concepts instead of duplicating every env detail from the runbook.
+- Verification:
+  - `git diff --check` -> passed with CRLF warnings only.
+- Related issue: https://github.com/Whispy-dsm/Inquiry-Agent/issues/19
+- Remaining risks: the guide is documentation-only and should be updated when workflow states, evidence providers, or customer-answer policies change.
+
+## GitHub Evidence File Size Limit
+
+### Plan
+
+- [x] Confirm where the GitHub matched-file fetch size limit is enforced.
+- [x] Raise the default limit so typical Backend service files can be analyzed.
+- [x] Add an env override and deployment/docs entries for the limit.
+- [x] Add regression coverage for service-sized files above the old 120KB limit.
+- [x] Run focused tests, typecheck, build, and diff hygiene.
+
+### Review
+
+- Changed files: `src/ai/internalEvidence.ts`, `src/config/env.ts`, `src/worker.ts`, `docker-compose.yml`, `docker-stack.yml`, `docs/runbook.md`, `docs/운영-플로우-및-env-설정-가이드.md`, `docs/inquiry-agent-system-policy-guide.md`, `tests/ai/internalEvidence.test.ts`, `tests/config/env.test.ts`, `tests/worker.test.ts`, `tasks/todo.md`.
+- Simplifications made: raised the built-in GitHub matched-file fetch cap from 120KB to 1,000,000 bytes and exposed the same value as `INTERNAL_EVIDENCE_GITHUB_MAX_FETCHED_FILE_BYTES` instead of adding per-source special cases.
+- Verification:
+  - `npm run test -- tests/ai/internalEvidence.test.ts tests/config/env.test.ts tests/worker.test.ts` -> 3 files / 46 tests passed.
+  - `npm run test` -> 18 files / 136 tests passed.
+  - `npm run typecheck` -> passed.
+  - `npm run build` -> passed.
+  - `git diff --check` -> passed with CRLF warnings only.
+  - `npm run lint` -> blocked by existing missing ESLint v9 `eslint.config.*`.
+- Related issue: https://github.com/Whispy-dsm/Inquiry-Agent/issues/19
+- Remaining risks: very large files above 1MB still need an env override, and increasing the value too far may pull generated files or bundles into memory.
