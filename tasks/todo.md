@@ -1430,3 +1430,50 @@ Related issue: #16
   - `npm run lint` -> blocked by existing missing ESLint v9 `eslint.config.*`.
 - Related issue: https://github.com/Whispy-dsm/Inquiry-Agent/issues/19
 - Remaining risks: very large files above 1MB still need an env override, and increasing the value too far may pull generated files or bundles into memory.
+
+## Internal Evidence Search Limit Tuning
+
+### Plan
+
+- [x] Expose GitHub result count and query term count as env settings with higher quality defaults.
+- [x] Expose Notion result count, query term count, and fetched block count as env settings with higher quality defaults.
+- [x] Wire the new env values through worker provider creation.
+- [x] Update deployment templates and operator docs.
+- [x] Add regression coverage for env parsing, template defaults, and provider wiring.
+- [x] Run focused tests, full tests, typecheck, build, lint attempt, and diff hygiene.
+
+### Review
+
+- Changed files: `src/ai/internalEvidence.ts`, `src/config/env.ts`, `src/worker.ts`, `docker-compose.yml`, `docker-stack.yml`, `docs/runbook.md`, `docs/운영-플로우-및-env-설정-가이드.md`, `docs/inquiry-agent-system-policy-guide.md`, `tests/ai/internalEvidence.test.ts`, `tests/config/env.test.ts`, `tests/worker.test.ts`, `tasks/todo.md`.
+- Simplifications made: kept the existing provider architecture and made the existing hardcoded caps configurable instead of adding a separate search path.
+- Verification:
+  - `npm run test -- tests/ai/internalEvidence.test.ts tests/config/env.test.ts tests/worker.test.ts` -> 3 files / 49 tests passed.
+  - `npm run test` -> 18 files / 139 tests passed.
+  - `npm run typecheck` -> passed.
+  - `npm run build` -> passed.
+  - `git diff --check` -> passed with CRLF warnings only.
+  - `npm run lint` -> blocked by existing missing ESLint v9 `eslint.config.*`.
+- Related issue: https://github.com/Whispy-dsm/Inquiry-Agent/issues/21
+- Remaining risks: larger defaults increase GitHub/Notion API usage and can surface more low-quality candidates; query-term counts remain configurable because raising them too far can over-constrain search.
+
+## GitHub Code Search Candidate Default
+
+### Plan
+
+- [x] Raise the default GitHub code search candidate count from 10 to 20.
+- [x] Keep the env override behavior unchanged.
+- [x] Update deployment templates, docs, and tests to match the new default.
+- [x] Run focused tests, typecheck, full tests, build, lint attempt, and diff hygiene.
+
+### Review
+
+- Changed files: `src/ai/internalEvidence.ts`, `src/config/env.ts`, `docker-compose.yml`, `docker-stack.yml`, `docs/runbook.md`, `docs/운영-플로우-및-env-설정-가이드.md`, `docs/inquiry-agent-system-policy-guide.md`, `tests/ai/internalEvidence.test.ts`, `tests/config/env.test.ts`, `tests/worker.test.ts`, `tasks/todo.md`.
+- Simplifications made: changed only the GitHub candidate default and matching docs/tests; the existing env override path remains unchanged.
+- Verification:
+  - `npm run test -- tests/ai/internalEvidence.test.ts tests/config/env.test.ts tests/worker.test.ts` -> 3 files / 49 tests passed.
+  - `npm run typecheck` -> passed.
+  - `npm run test` -> 18 files / 139 tests passed.
+  - `npm run build` -> passed.
+  - `npm run lint` -> blocked by existing missing ESLint v9 `eslint.config.*`.
+- Related issue: https://github.com/Whispy-dsm/Inquiry-Agent/issues/21
+- Remaining risks: GitHub code search itself has a tight external rate limit, so raising candidates to 20 increases downstream contents fetch work but not code-search request count.

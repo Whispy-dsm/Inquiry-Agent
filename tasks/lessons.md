@@ -133,3 +133,5 @@
 - Rule: Hard intent terms should come from the customer inquiry text, while route explanations should be ranked as narrative search terms so generic prose cannot override feature-specific evidence words.
 - Correction: The user showed inq_21 promoted unrelated Notion music/profile content and backend `R2Config.java` because `profile` matched both product profile-photo language and framework/environment profile code.
 - Rule: Treat `profile` as a weak relevance term; profile-photo evidence must also match a concrete asset/action term such as image, photo, upload, or a long implementation symbol.
+- Correction: The user clarified that the requested follow-up issue was for search candidate/block-size tuning, not rate-limit/backoff.
+- Rule: When a user asks to create an issue "related to this" after implementation discussion, anchor the issue scope to the most recent requested change and confirm the title/body describe that concrete change before creating follow-up issues.
